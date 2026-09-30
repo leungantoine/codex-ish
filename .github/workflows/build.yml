@@ -47,6 +47,18 @@ jobs:
           df -h /
       - name: Install build and verification tools
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends perl make cmake pkg-config clang libclang-dev qemu-user-static binutils file
+      - name: Check Rust and Zig static linking
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          printf 'fn main() { println!("ish-link-ok"); }\n' > "$RUNNER_TEMP/ish-link-check.rs"
+          rustc --edition 2024 --target aarch64-unknown-linux-musl \
+            -C linker="$PWD/build-tools/zigcc" -C link-self-contained=no \
+            "$RUNNER_TEMP/ish-link-check.rs" -o "$RUNNER_TEMP/ish-link-check"
+          readelf -h "$RUNNER_TEMP/ish-link-check" | grep -q 'Machine:.*AArch64'
+          if readelf -l "$RUNNER_TEMP/ish-link-check" | grep -q INTERP; then exit 1; fi
+          if readelf -d "$RUNNER_TEMP/ish-link-check" | grep -q '(NEEDED)'; then exit 1; fi
+          qemu-aarch64-static "$RUNNER_TEMP/ish-link-check" | grep -Fx 'ish-link-ok'
       - name: Cross-build and package
         working-directory: upstream
         env:
