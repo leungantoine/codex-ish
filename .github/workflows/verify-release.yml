@@ -1,0 +1,47 @@
+name: Verify published iSH Release
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/verify-release.yml
+      - tests/verify-subprocess.sh
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.95.0'
+      - name: Verify downloaded Release and run ARM64 binaries
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends qemu-user-static binutils
+          mkdir release
+          cd release
+          base=https://github.com/leungantoine/codex-ish/releases/download/ish-v0.158.0-3
+          curl -fsSL "$base/codex-ish-aarch64.tar.gz" -o codex-ish-aarch64.tar.gz
+          curl -fsSL "$base/codex-ish-aarch64.tar.gz.sha256" -o codex-ish-aarch64.tar.gz.sha256
+          sha256sum -c codex-ish-aarch64.tar.gz.sha256
+          mkdir package
+          tar -xzf codex-ish-aarch64.tar.gz -C package
+          cd package
+          sha256sum -c SHA256SUMS
+          for name in codex codex-code-mode-host codex-responses-api-proxy codex-path/rg diagnostics/ish-syscall-probe; do
+            readelf -h "$name" | grep -q 'Machine:.*AArch64'
+            if readelf -l "$name" | grep -q INTERP; then exit 1; fi
+            if readelf -d "$name" | grep -q '(NEEDED)'; then exit 1; fi
+          done
+          qemu-aarch64-static ./codex --version
+          qemu-aarch64-static ./codex login --help | grep -q -- '--device-auth'
+          qemu-aarch64-static ./codex-code-mode-host --help
+          qemu-aarch64-static ./codex-responses-api-proxy --help
+          printf 'ish-search-ok\n' > sample.txt
+          qemu-aarch64-static ./codex-path/rg -Fx ish-search-ok sample.txt
+          qemu-aarch64-static ./diagnostics/ish-syscall-probe
+      - name: Test patched subprocess behavior on Linux
+        run: bash tests/verify-subprocess.sh
