@@ -20,7 +20,7 @@ jobs:
           sudo apt-get install -y meson ninja-build clang llvm libarchive-dev libsqlite3-dev zlib1g-dev
           git clone --depth 1 --branch builds/iSH-AOK_556 https://github.com/emkey1/ish-AOK.git emulator
           git -C emulator submodule update --init --depth 1 deps/smallclue
-          CC=clang meson setup emulator/build emulator --buildtype=debugoptimized -Dguest_archs=arm64 -Dnative_rust=disabled -Dnative_zsh=disabled -Dnative_dash=disabled -Dnative_bash=disabled -Dgpu=disabled
+          CC=clang meson setup emulator/build emulator --buildtype=debugoptimized -Dguest_archs=arm64 -Dnative_rust=disabled -Dnative_zsh=disabled -Dnative_dash=disabled -Dnative_bash=disabled
           ninja -C emulator/build -j 2 ish tools/fakefsify
       - name: Prepare checked Codex and Alpine guest
         run: |
@@ -47,6 +47,12 @@ jobs:
           set -euo pipefail
           timeout 180 emulator/build/ish -f guest /codex/diagnostics/ish-syscall-probe
           timeout 600 python3 tests/reproduce-ish.py ish emulator/build/ish -f guest /bin/sh -c 'HOME=/root CODEX_HOME=/root/.codex exec /codex/codex app-server'
+      - name: Print failure diagnostics
+        if: failure()
+        run: |
+          for log in *-stderr.log emulator/build/meson-logs/meson-log.txt; do
+            if test -f "$log"; then tail -100 "$log"; fi
+          done
       - uses: actions/upload-artifact@v4
         if: always()
         with:
