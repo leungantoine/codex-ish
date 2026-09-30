@@ -12,8 +12,10 @@ import time
 label, *command = sys.argv[1:]
 messages = queue.Queue()
 with open(f"{label}-stderr.log", "w") as errors:
+    os.dup2(errors.fileno(), 555)
     process = subprocess.Popen(command, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                               stderr=errors, text=True, bufsize=1)
+                               stderr=errors, text=True, bufsize=1, pass_fds=(555,))
+    os.close(555)
 
     def read_stdout():
         for line in process.stdout:
