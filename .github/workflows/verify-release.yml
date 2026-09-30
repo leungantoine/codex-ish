@@ -6,7 +6,7 @@ on:
       - .github/workflows/verify-release.yml
       - tests/verify-subprocess.sh
 permissions:
-  contents: read
+  contents: write
 jobs:
   verify:
     runs-on: ubuntu-24.04
@@ -45,3 +45,14 @@ jobs:
           qemu-aarch64-static ./diagnostics/ish-syscall-probe
       - name: Test patched subprocess behavior on Linux
         run: bash tests/verify-subprocess.sh
+      - name: Package licenses and publish verified Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          rm -f release/package/sample.txt
+          cp LICENSE NOTICE release/package/
+          mkdir dist
+          tar -czf dist/codex-ish-aarch64.tar.gz -C release/package .
+          (cd dist && sha256sum codex-ish-aarch64.tar.gz > codex-ish-aarch64.tar.gz.sha256)
+          gh release create ish-v0.158.0-3.1 dist/* --target "$GITHUB_SHA" --latest --title 'Codex 0.158.0 for ARM64 iSH-AOK' --notes 'Real patched OpenAI Codex binaries from successful build 36677875179, with LICENSE and NOTICE included. Archive and executable checksums, static AArch64 ELF checks, QEMU CLI/companion/ripgrep checks, and native Linux subprocess tests (normal behavior, injected EINVAL fallbacks, EPERM propagation, exit status/output and cleanup) passed. Authentication and execution inside iSH-AOK on an iPad remain unverified. See README for installation and sandbox limitations.'
