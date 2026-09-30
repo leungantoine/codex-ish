@@ -22,7 +22,7 @@ export PATH="$HOME/.local/bin:$PATH"
 codex --version
 ```
 
-The installer downloads `codex-ish-aarch64.tar.gz` and its `.sha256` file from the repository's latest Release, verifies the archive and internal checksums, extracts all companion executables to `~/.local/opt/codex-ish`, and links `~/.local/bin/codex` and `~/.local/bin/rg`. It rejects other architectures. The archive includes a static ARM64 musl `rg` in `codex-path/`, matching OpenAI's package layout. Inspect `install.sh` before running it if you wish. Add `export PATH="$HOME/.local/bin:$PATH"` to `~/.profile` for future sessions (and to `~/.bashrc` if you use interactive bash without a login shell). If no Release exists or a download/checksum fails, installation stops.
+The installer downloads `codex-ish-aarch64.tar.gz` and its `.sha256` file from the repository's latest Release, verifies the archive and internal checksums, extracts all companion executables to `~/.local/opt/codex-ish`, creates a `~/.local/bin/codex` launcher that supplies `--no-daemon`, and links `~/.local/bin/rg`. It rejects other architectures. The archive includes a static ARM64 musl `rg` in `codex-path/`, matching OpenAI's package layout. Inspect `install.sh` before running it if you wish. Add `export PATH="$HOME/.local/bin:$PATH"` to `~/.profile` for future sessions (and to `~/.bashrc` if you use interactive bash without a login shell). If no Release exists or a download/checksum fails, installation stops.
 
 You can also download the two Release assets yourself, run `sha256sum -c codex-ish-aarch64.tar.gz.sha256`, and extract the archive into `~/.local/opt/codex-ish`. Keep `codex-code-mode-host` and `codex-responses-api-proxy` beside `codex`; do not copy only the CLI executable.
 
@@ -90,7 +90,7 @@ The source overlay can be reproduced on an Ubuntu 24.04 builder with Rust 1.95.0
 
 ### Common failures
 
-- **Startup requires `--no-daemon`:** use that flag for interactive sessions, including `resume` and `fork`. The shared background server has not been verified in iSH-AOK.
+- **Startup requires `--no-daemon`:** use that flag for interactive sessions, including `resume` and `fork`. The updated installer supplies `--no-daemon` automatically; rerun the installer to update the launcher. Invoking `~/.local/opt/codex-ish/codex` directly bypasses it. `CODEX_ISH_USE_DAEMON=1` explicitly opts into the unsupported daemon path.
 - **The entire iSH-AOK app closes on a shell command:** this is a reported unresolved failure. After reopening the app, run the diagnostic probe. Record the iSH-AOK build number and the matching iOS Analytics `iSH-AOK` crash or `JetsamEvent` report; these distinguish a native emulator crash from an OS memory-pressure termination.
 
 - **`uname -m` says `i686` or `x86_64`:** switch to iSH-AOK's ARM64 Alpine root.
