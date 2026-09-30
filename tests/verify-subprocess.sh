@@ -12,7 +12,7 @@ name = "ish-subprocess-verification"
 version = "0.1.0"
 edition = "2024"
 [dependencies]
-libc = "=0.2.182"
+libc = "=0.2.186"
 tokio = { path = "$work/inputs/codex-rs/vendor/tokio-1.52.3", features = ["process", "rt-multi-thread", "macros", "time"] }
 EOF
 cat > "$work/harness/src/main.rs" <<'RS'
