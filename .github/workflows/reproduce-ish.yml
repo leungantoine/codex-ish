@@ -17,7 +17,7 @@ jobs:
         run: |
           set -euo pipefail
           sudo apt-get update
-          sudo apt-get install -y meson ninja-build clang llvm libarchive-dev libsqlite3-dev zlib1g-dev
+          sudo apt-get install -y meson ninja-build clang llvm libarchive-dev libsqlite3-dev zlib1g-dev musl-tools
           git clone --depth 1 --branch builds/iSH-AOK_556 https://github.com/emkey1/ish-AOK.git emulator
           git -C emulator submodule update --init --depth 1 deps/smallclue
           CC=clang meson setup emulator/build emulator --buildtype=debugoptimized -Dguest_archs=arm64 -Dnative_rust=disabled -Dnative_zsh=disabled -Dnative_dash=disabled -Dnative_bash=disabled -Dlog=strace
@@ -38,15 +38,23 @@ jobs:
           test "$(sha256sum alpine.tar.gz | cut -d ' ' -f1)" = "$(cut -d ' ' -f1 alpine.sha256)"
           tar -xzf alpine.tar.gz -C root
           cp -a package root/codex
+          musl-gcc -static -O2 -pthread tests/ish-spawn-probe.c -o root/codex/diagnostics/ish-spawn-probe
           tar -czf guest.tar.gz -C root .
           emulator/build/tools/fakefsify guest.tar.gz guest
       - name: Baseline actual ARM64 binaries on Linux
-        run: python3 tests/reproduce-ish.py linux package/codex app-server
+        run: |
+          CODEX_ISH_RELEASE_BASE="file://$GITHUB_WORKSPACE" sh install.sh
+          "$HOME/.local/bin/codex" --version
+          python3 tests/reproduce-ish.py linux "$HOME/.local/bin/codex" app-server
+          for mode in fork posix helper; do root/codex/diagnostics/ish-spawn-probe "$mode" "$PWD/package/codex"; done
       - name: Run actual binaries under iSH-AOK guest kernel and JIT
         run: |
           set -euo pipefail
-          timeout 180 emulator/build/ish -f guest /codex/diagnostics/ish-syscall-probe 2>probe-stderr.log
-          timeout 180 emulator/build/ish -f guest /codex/codex --version 2>version-stderr.log
+          for mode in fork posix helper; do
+            timeout 180 emulator/build/ish -f guest /codex/diagnostics/ish-spawn-probe "$mode" /codex/codex 555>"$mode-stderr.log" 2>&555
+          done
+          timeout 180 emulator/build/ish -f guest /codex/diagnostics/ish-syscall-probe 555>probe-stderr.log 2>&555
+          timeout 180 emulator/build/ish -f guest /codex/codex --version 555>version-stderr.log 2>&555
           timeout 600 python3 tests/reproduce-ish.py ish emulator/build/ish -f guest /codex/codex app-server
       - name: Print failure diagnostics
         if: failure()
