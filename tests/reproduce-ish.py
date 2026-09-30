@@ -36,7 +36,11 @@ with open(f"{label}-stderr.log", "w") as errors:
         while time.monotonic() < end:
             message = messages.get(timeout=max(0.01, end - time.monotonic()))
             if message is None:
-                raise RuntimeError(f"{label}: server exited; status={process.poll()}")
+                try:
+                    status = process.wait(timeout=2)
+                except subprocess.TimeoutExpired:
+                    status = "stdout closed while emulator remains running"
+                raise RuntimeError(f"{label}: server exited; status={status}")
             if message.get("method") == "command/exec/outputDelta":
                 output += base64.b64decode(message["params"]["deltaBase64"])
             if message.get("id") == request_id:
