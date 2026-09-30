@@ -2,9 +2,11 @@
 
 This repository builds **OpenAI's real Codex CLI** for the ARM64 Alpine guest in [iSH-AOK](https://github.com/emkey1/ish-AOK). It pins OpenAI Codex [`rust-v0.158.0`](https://github.com/openai/codex/tree/rust-v0.158.0), commit `064c6b8c737f5b41d171fdda80bd9ef10ad06eb3`, and applies two small Linux subprocess compatibility changes. The target is `aarch64-unknown-linux-musl`.
 
-**Build status:** no finished binary or Release has been verified yet. The installer becomes usable after a successful [GitHub Release](https://github.com/leungantoine/codex-ish/releases/latest) contains both `codex-ish-aarch64.tar.gz` and `codex-ish-aarch64.tar.gz.sha256`. A pushed workflow or source archive alone is not a compiled binary. Each successful workflow run also uploads an Actions artifact.
+**Build status:** real binaries were compiled successfully in [build run 36677875179](https://github.com/leungantoine/codex-ish/actions/runs/36677875179). The license-complete [Release `ish-v0.158.0-3.1`](https://github.com/leungantoine/codex-ish/releases/tag/ish-v0.158.0-3.1) passed [final verification](https://github.com/leungantoine/codex-ish/actions/runs/36732272923). Download the [latest Release](https://github.com/leungantoine/codex-ish/releases/latest), containing `codex-ish-aarch64.tar.gz` and `codex-ish-aarch64.tar.gz.sha256`. Authentication and shell execution inside iSH-AOK on an iPad still require the device test below.
 
 ## Install directly in iSH-AOK
+
+Allow at least 1 GB free for a fresh installation, or 2 GB when retaining the previous installation during an update. The archive is about 203 MiB compressed and its executables total about 638 MiB.
 
 Select iSH-AOK's **ARM64 Alpine** root and verify `uname -m` reports `aarch64`. The regular x86 iSH root cannot run this binary. In iSH:
 
@@ -56,9 +58,19 @@ The patched Tokio is selected with `[patch.crates-io]` in `codex-rs/Cargo.toml` 
 
 ## Build and verification
 
-The [workflow](.github/workflows/build.yml) runs on Ubuntu 24.04 x86_64. It clones the pinned OpenAI release and checks its commit before applying `ish-overlay.tar.gz`. Rust 1.95.0 builds the `aarch64-unknown-linux-musl` target; Zig 0.14.0 supplies the C/C++ cross compiler. The build script checks OpenAI's prebuilt V8 archive against the checksum committed in upstream, builds static musl OpenSSL, then builds `codex`, `codex-code-mode-host`, and `codex-responses-api-proxy`. A low-memory release profile is used. It downloads [ripgrep 15.2.0's official ARM64 musl asset](https://github.com/BurntSushi/ripgrep/releases/tag/15.2.0), checks its published SHA-256 digest, and packages `rg` and its licenses. The archive also contains an empty `codex-resources/` directory for the usual package layout, diagnostics, build information, and SHA-256 sums. This iSH build omits `bwrap` because its sandbox cannot run in iSH.
+The [workflow](.github/workflows/build.yml) runs on Ubuntu 24.04 x86_64. It clones the pinned OpenAI release and checks its commit before applying `ish-overlay.tar.gz`. Rust 1.95.0 builds the `aarch64-unknown-linux-musl` target; Zig 0.14.0 supplies the C/C++ cross compiler. The build script checks OpenAI's prebuilt V8 archive against the checksum committed in upstream, builds static musl OpenSSL, then builds `codex`, `codex-code-mode-host`, and `codex-responses-api-proxy`. A low-memory release profile is used. It downloads [ripgrep 15.2.0's official ARM64 musl asset](https://github.com/BurntSushi/ripgrep/releases/tag/15.2.0), checks its published SHA-256 digest, and packages `rg` and its licenses. The archive includes OpenAI’s Apache 2.0 `LICENSE` and `NOTICE`. It also contains an empty `codex-resources/` directory for the usual package layout, diagnostics, build information, and SHA-256 sums. This iSH build omits `bwrap` because its sandbox cannot run in iSH.
 
 CI checks that each executable, including bundled `rg` and the diagnostic probe, is AArch64 ELF with no program interpreter or shared-library `NEEDED` entry. It verifies internal package checksums, runs `codex --version`, `rg --version`, and the syscall probe under `qemu-aarch64-static`, and publishes the archive and checksum both as an Actions artifact and a GitHub Release. The Release tag includes the Actions run number, so older builds remain available. `releases/latest` points to the newest successful published build.
+
+### Recorded verification
+
+- The published archive was downloaded independently and its outer checksum and every internal executable checksum were verified.
+- All five executables are ELF64 AArch64 with no `PT_INTERP` or shared-library `DT_NEEDED` dependencies.
+- Under QEMU: `codex-cli 0.158.0`, both companion executables’ help, the device-auth CLI option, ripgrep searching a sample file, and the diagnostic fork/wait probe passed.
+- [The subprocess verification workflow](.github/workflows/verify-release.yml) compiles the exact patched PTY module and vendored Tokio into a native Linux harness. All three test modes passed. It checks 20 worker-thread shell spawns, stdout/stderr, exit status 17, and child termination/reaping. A test-only syscall shim exercises `prctl`/`waitid(P_PIDFD)` returning `EINVAL`, verifies the parent guard is skipped, and checks that `EPERM` remains fatal. The shim is never included in the Release.
+- The original binaries are from Release `ish-v0.158.0-3`; the license-complete package `ish-v0.158.0-3.1` preserves those executable hashes. See [the verification run](https://github.com/leungantoine/codex-ish/actions/runs/36732272923) for the test results and publication.
+
+These native harness tests exercise the patched source on Linux. They do not exercise the static ARM64 binary under iSH’s syscall implementation.
 
 **Verification limit:** QEMU runs ordinary Linux syscalls, not iSH-AOK's implementation. CI cannot prove that login or child shell commands work on your iPad. The final `printf` test above must be run inside iSH-AOK. A failure there should be reported with the diagnostic probe output, iSH-AOK version, and `codex --version`.
 
@@ -69,6 +81,8 @@ CI checks that each executable, including bundled `rg` and the diagnostic probe,
 3. Recreate `ish-overlay.tar.gz` with the changed `Cargo.toml`, `Cargo.lock`, patched PTY file, vendored Tokio directory (if needed), wrappers, build script, diagnostic source, and bundled READMEs. The current overlay's member list can be inspected with `tar -tzf ish-overlay.tar.gz`. Keep it limited to changed/build files; CI fetches the rest from OpenAI.
 4. Update the tag and commit check in `.github/workflows/build.yml`, and the `STABLE_GIT_COMMIT`, V8 manifest handling, and package version in `scripts/build-ish-aarch64.sh` inside the overlay. Revisit Rust/Zig versions and the list of companion executables for that release. The V8 download must continue to match its upstream committed checksum.
 5. Push the overlay and workflow, or run **Actions → Build Codex for iSH-AOK → Run workflow**. Inspect the build log, architecture/linkage checks, QEMU version result, package contents, and Release checksum. Finally test shell execution and login in iSH-AOK. Do not label a release working on iSH until that device test succeeds.
+
+The build uses one Cargo job, release LTO off, debug information 0, optimization level 2 and 16 codegen units, with codegen units 1 for `zbus` and `codex-model-provider`. `-C link-self-contained=no` lets Zig supply musl startup objects, avoiding duplicate `_start` symbols from Rust’s bundled objects. CI first tests this linker setup with a tiny static ARM64 program. OpenSSL settings loaded from `GITHUB_ENV` are exported using `set -a` while sourcing them. Hosted runners remove unused SDKs and allocate swap only when sufficient disk remains; retain both memory and disk headroom when changing the profile.
 
 The source overlay can be reproduced on an Ubuntu 24.04 builder with Rust 1.95.0, its ARM64 musl target, Zig 0.14.0, Perl, make, CMake, pkg-config, and Clang: clone the pinned Codex tag, extract `ish-overlay.tar.gz` at its root, then run `./scripts/build-ish-aarch64.sh`. This is a maintenance path for builders; **the iPad installation uses the finished Release binary**.
 
