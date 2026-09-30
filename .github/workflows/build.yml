@@ -30,6 +30,21 @@ jobs:
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.14.0
+      - name: Prepare memory and disk headroom
+        run: |
+          set -euo pipefail
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          free_kib=$(df -Pk /mnt | awk 'NR == 2 {print $4}')
+          swap_mib=$((free_kib / 1024 - 10000))
+          if ((swap_mib > 8192)); then swap_mib=8192; fi
+          if ((swap_mib >= 2048)); then
+            sudo fallocate -l "${swap_mib}M" /mnt/codex-ish-swap
+            sudo chmod 600 /mnt/codex-ish-swap
+            sudo mkswap /mnt/codex-ish-swap
+            sudo swapon /mnt/codex-ish-swap
+          fi
+          free -h
+          df -h /
       - name: Install build and verification tools
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends perl make cmake pkg-config clang libclang-dev qemu-user-static binutils file
       - name: Cross-build and package
