@@ -70,9 +70,22 @@ CI checks that each executable, including bundled `rg` and the diagnostic probe,
 - All five executables are ELF64 AArch64 with no `PT_INTERP` or shared-library `DT_NEEDED` dependencies.
 - Under QEMU: `codex-cli 0.158.0`, both companion executables’ help, the device-auth CLI option, ripgrep searching a sample file, and the diagnostic fork/wait probe passed.
 - [The subprocess verification workflow](.github/workflows/verify-release.yml) compiles the exact patched PTY module and vendored Tokio into a native Linux harness. All three test modes passed. It checks 20 worker-thread shell spawns, stdout/stderr, exit status 17, and child termination/reaping. A test-only syscall shim exercises `prctl`/`waitid(P_PIDFD)` returning `EINVAL`, verifies the parent guard is skipped, and checks that `EPERM` remains fatal. The shim is never included in the Release.
+- [Emulator run 36787134523](https://github.com/leungantoine/codex-ish/actions/runs/36787134523) built iSH-AOK Release 556 (`19b129bed782897a94d56e1855497f831cfdd405`) on an ARM64 Linux host and ran Alpine 3.23.3 through its guest kernel and ARM64 JIT. The downloaded, unchanged Release binary passed actual `command/exec` pipe and PTY shell calls, output capture and exit status 17. Worker-thread fork, posix_spawn, and the actual Codex setup-helper handshake also passed. The updated installer and embedded-mode launcher passed on native ARM64 Linux. This test uses guest `/bin/sh`; native iSH-AOK shell applets, the interactive TUI/model flow, device authentication, and iOS memory limits were not exercised.
 - The original binaries are from Release `ish-v0.158.0-3`; the license-complete package `ish-v0.158.0-3.1` preserves those executable hashes. See [the verification run](https://github.com/leungantoine/codex-ish/actions/runs/36732272923) for the test results and publication.
 
 These native harness tests exercise the patched source on Linux. They do not exercise the static ARM64 binary under iSH’s syscall implementation.
+
+### Diagnose the reported device crash
+
+For a comparison using the existing binary, temporarily disable shell snapshots, code-mode hosting, and the unified executor:
+
+```sh
+codex --no-daemon --disable shell_snapshot --disable code_mode_host \
+  --disable unified_exec \
+  --sandbox danger-full-access --ask-for-approval on-request
+```
+
+Ask for the same `printf` command. This is an **unverified diagnostic comparison**, not a confirmed fix. It selects the legacy shell execution path, which avoids re-executing the full Codex binary as a setup helper. If the selected model rejects this feature combination, include that error instead. Preserve the iSH-AOK build number, probe output, and the crash-time iOS Analytics report. `JetsamEvent` can identify an OS memory-pressure termination; an `iSH-AOK` report can identify a native crash. Share only the relevant crash sections, without authentication files or tokens.
 
 **Verification limit:** QEMU runs ordinary Linux syscalls, not iSH-AOK's implementation. CI cannot prove that login or child shell commands work on your iPad. The final `printf` test above must be run inside iSH-AOK. A failure there should be reported with the diagnostic probe output, iSH-AOK version, and `codex --version`.
 
