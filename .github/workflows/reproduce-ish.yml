@@ -46,7 +46,8 @@ jobs:
         run: |
           set -euo pipefail
           timeout 180 emulator/build/ish -f guest /codex/diagnostics/ish-syscall-probe
-          timeout 600 python3 tests/reproduce-ish.py ish emulator/build/ish -f guest /bin/sh -c 'HOME=/root CODEX_HOME=/root/.codex exec /codex/codex app-server'
+          timeout 180 emulator/build/ish -f guest /codex/codex --version
+          timeout 600 python3 tests/reproduce-ish.py ish emulator/build/ish -f guest /codex/codex app-server
       - name: Print failure diagnostics
         if: failure()
         run: |
