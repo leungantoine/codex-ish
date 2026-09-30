@@ -2,6 +2,8 @@
 
 This repository builds **OpenAI's real Codex CLI** for the ARM64 Alpine guest in [iSH-AOK](https://github.com/emkey1/ish-AOK). It pins OpenAI Codex [`rust-v0.158.0`](https://github.com/openai/codex/tree/rust-v0.158.0), commit `064c6b8c737f5b41d171fdda80bd9ef10ad06eb3`, and applies two small Linux subprocess compatibility changes. The target is `aarch64-unknown-linux-musl`.
 
+**iPad status:** a user reports that startup requires `--no-daemon` and requesting a shell command crashes the entire iSH-AOK app. The published binary is **not yet working on the device**. Linux/QEMU verification below does not establish iSH compatibility. Investigation is ongoing.
+
 **Build status:** real binaries were compiled successfully in [build run 36677875179](https://github.com/leungantoine/codex-ish/actions/runs/36677875179). The license-complete [Release `ish-v0.158.0-3.1`](https://github.com/leungantoine/codex-ish/releases/tag/ish-v0.158.0-3.1) passed [final verification](https://github.com/leungantoine/codex-ish/actions/runs/36732272923). Download the [latest Release](https://github.com/leungantoine/codex-ish/releases/latest), containing `codex-ish-aarch64.tar.gz` and `codex-ish-aarch64.tar.gz.sha256`. Authentication and shell execution inside iSH-AOK on an iPad still require the device test below.
 
 ## Install directly in iSH-AOK
@@ -30,7 +32,7 @@ You can also download the two Release assets yourself, run `sha256sum -c codex-i
 codex login --device-auth
 mkdir -p "$HOME/codex-test"
 cd "$HOME/codex-test"
-codex --sandbox danger-full-access --ask-for-approval on-request
+codex --no-daemon --sandbox danger-full-access --ask-for-approval on-request
 ```
 
 Ask Codex to run `printf 'ish-shell-ok\n'` with its local shell and show the output. Check that the command exits successfully and displays `ish-shell-ok`. For an unattended smoke test after login:
@@ -87,6 +89,9 @@ The build uses one Cargo job, release LTO off, debug information 0, optimization
 The source overlay can be reproduced on an Ubuntu 24.04 builder with Rust 1.95.0, its ARM64 musl target, Zig 0.14.0, Perl, make, CMake, pkg-config, and Clang: clone the pinned Codex tag, extract `ish-overlay.tar.gz` at its root, then run `./scripts/build-ish-aarch64.sh`. This is a maintenance path for builders; **the iPad installation uses the finished Release binary**.
 
 ### Common failures
+
+- **Startup requires `--no-daemon`:** use that flag for interactive sessions, including `resume` and `fork`. The shared background server has not been verified in iSH-AOK.
+- **The entire iSH-AOK app closes on a shell command:** this is a reported unresolved failure. After reopening the app, run the diagnostic probe. Record the iSH-AOK build number and the matching iOS Analytics `iSH-AOK` crash or `JetsamEvent` report; these distinguish a native emulator crash from an OS memory-pressure termination.
 
 - **`uname -m` says `i686` or `x86_64`:** switch to iSH-AOK's ARM64 Alpine root.
 - **TLS or download failure:** install/update `ca-certificates` and check connectivity to GitHub Releases. A missing Release means CI has not finished successfully.
