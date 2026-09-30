@@ -1,0 +1,97 @@
+name: Build Codex for iSH-AOK
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/build.yml
+      - ish-overlay.tar.gz
+      - install.sh
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 300
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Fetch pinned OpenAI source
+        run: |
+          git clone --depth 1 --branch rust-v0.158.0 https://github.com/openai/codex.git upstream
+          test "$(git -C upstream rev-parse HEAD)" = 064c6b8c737f5b41d171fdda80bd9ef10ad06eb3
+          tar -xzf ish-overlay.tar.gz -C upstream
+          grep -q 'Some(libc::EINVAL)' upstream/codex-rs/utils/pty/src/process_group.rs
+          grep -q 'wait_result == -1' upstream/codex-rs/vendor/tokio-1.52.3/src/process/unix/pidfd_reaper.rs
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.95.0'
+          targets: aarch64-unknown-linux-musl
+      - uses: mlugg/setup-zig@v2
+        with:
+          version: 0.14.0
+      - name: Install build and verification tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends perl make cmake pkg-config clang libclang-dev qemu-user-static binutils file
+      - name: Cross-build and package
+        working-directory: upstream
+        env:
+          CARGO_BUILD_JOBS: '1'
+          OPENSSL_BUILD_JOBS: '2'
+        run: |
+          set -o pipefail
+          for attempt in $(seq 1 20); do
+            if ./scripts/build-ish-aarch64.sh 2>&1 | tee "$RUNNER_TEMP/build-$attempt.log"; then
+              exit 0
+            fi
+            if ! grep -q 'memory map must have a non-zero length' "$RUNNER_TEMP/build-$attempt.log"; then
+              exit 1
+            fi
+            echo "Retrying intermittent rustc archive mapping error ($attempt/20)"
+          done
+          exit 1
+      - name: Verify ARM64 musl package
+        working-directory: upstream
+        run: |
+          set -euo pipefail
+          pkg=dist/codex-ish-aarch64
+          test -s dist/codex-ish-aarch64.tar.gz
+          for name in codex codex-code-mode-host codex-responses-api-proxy codex-path/rg diagnostics/ish-syscall-probe; do
+            file "$pkg/$name"
+            readelf -h "$pkg/$name" | grep -q 'Machine:.*AArch64'
+            if readelf -l "$pkg/$name" | grep -q INTERP; then
+              echo "Unexpected dynamic loader in $name" >&2
+              exit 1
+            fi
+            if readelf -d "$pkg/$name" 2>/dev/null | grep -q '(NEEDED)'; then
+              echo "Unexpected shared-library dependency in $name" >&2
+              exit 1
+            fi
+          done
+          (cd "$pkg" && sha256sum -c SHA256SUMS)
+          qemu-aarch64-static "$pkg/codex" --version
+          qemu-aarch64-static "$pkg/codex-path/rg" --version
+          qemu-aarch64-static "$pkg/diagnostics/ish-syscall-probe"
+          tar -tzf dist/codex-ish-aarch64.tar.gz > "$RUNNER_TEMP/archive-list.txt"
+          grep -Fxq './codex-resources/' "$RUNNER_TEMP/archive-list.txt"
+          (cd dist && sha256sum codex-ish-aarch64.tar.gz > codex-ish-aarch64.tar.gz.sha256)
+      - uses: actions/upload-artifact@v4
+        with:
+          name: codex-ish-aarch64
+          path: |
+            upstream/dist/codex-ish-aarch64.tar.gz
+            upstream/dist/codex-ish-aarch64.tar.gz.sha256
+          if-no-files-found: error
+      - name: Publish directly installable release
+        if: github.ref == 'refs/heads/main'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          tag="ish-v0.158.0-${GITHUB_RUN_NUMBER}"
+          gh release create "$tag" \
+            upstream/dist/codex-ish-aarch64.tar.gz \
+            upstream/dist/codex-ish-aarch64.tar.gz.sha256 \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$GITHUB_SHA" \
+            --title "Codex 0.158.0 for iSH-AOK (build ${GITHUB_RUN_NUMBER})" \
+            --notes "Built from OpenAI Codex rust-v0.158.0, commit 064c6b8c737f5b41d171fdda80bd9ef10ad06eb3. Includes the iSH subprocess patches. See README.md for installation, security, and verification limits." \
+            --latest
