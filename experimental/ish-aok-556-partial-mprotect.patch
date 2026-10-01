@@ -1,0 +1,17 @@
+--- a/emu/memory.c
++++ b/emu/memory.c
+@@ -3853,9 +3853,11 @@
+ }
+ 
+ int pt_set_flags(struct mem *mem, page_t start, pages_t pages, int flags) {
+-    // mprotect rewrites per-page flags, so materialise any overlapping reservation first rather than
+-    // teaching this path about them. Iterates reservations, never pages.
+-    mem_lazy_materialize_range(mem, start, start + pages);
++    // Materialise only the requested range. V8 commits small parts of a
++    // terabyte-scale reservation; expanding the entire reservation here can
++    // exhaust host memory merely by allocating its page-table entries.
++    // mem_lazy_populate preserves the untouched sides as lazy reservations.
++    mem_lazy_populate(mem, start, start + pages);
+ 
+     if (!mem_page_range_valid(mem, start, pages))
+         return _ENOMEM;
