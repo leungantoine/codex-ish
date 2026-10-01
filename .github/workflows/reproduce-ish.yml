@@ -109,6 +109,10 @@ jobs:
             sudo systemd-run --wait --pipe --collect --working-directory="$PWD" -p MemoryMax=2G -p MemorySwapMax=0 -p OOMPolicy=kill /usr/bin/env ISH_LAZY_TRACE=1 /usr/bin/time -v timeout 300 python3 tests/reproduce-code-mode.py "ish-partial-$mode" emulator/build/ish -f guest "$host" || status=1
           done
           exit "$status"
+      - name: Verify ordinary shell execution after emulator patch
+        if: always()
+        run: |
+          timeout 600 python3 tests/reproduce-ish.py ish-partial-shell emulator/build/ish -f guest /codex/codex --no-daemon --disable code_mode_host app-server
       - name: Print failure diagnostics
         if: always()
         run: |
