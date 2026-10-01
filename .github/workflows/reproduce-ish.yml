@@ -38,6 +38,18 @@ jobs:
           curl -fsSL "$base/alpine-minirootfs-3.23.3-aarch64.tar.gz.sha256" -o alpine.sha256
           test "$(sha256sum alpine.tar.gz | cut -d ' ' -f1)" = "$(cut -d ' ' -f1 alpine.sha256)"
           tar -xzf alpine.tar.gz -C root
+          # Diagnostic copy only: replace the existing fixed-length V8 flag
+          # string with --jitless, without changing ELF offsets. Never release it.
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          old = b"--no-maglev --no-turbolev --no-turbo-inline-array-builtins"
+          new = b"--jitless --no-maglev --no-turbolev".ljust(len(old), b" ")
+          host = Path("package/codex-code-mode-host").read_bytes()
+          assert host.count(old) == 1
+          out = Path("package/codex-code-mode-host-jitless-diagnostic")
+          out.write_bytes(host.replace(old, new))
+          out.chmod(0o755)
+          PYCODE
           cp -a package root/codex
           musl-gcc -static -O2 -pthread tests/ish-spawn-probe.c -o root/codex/diagnostics/ish-spawn-probe
           tar -czf guest.tar.gz -C root .
@@ -69,6 +81,8 @@ jobs:
           /usr/bin/time -v timeout 300 python3 tests/reproduce-code-mode.py linux-code package/codex-code-mode-host || status=1
           sudo systemd-run --wait --pipe --collect --working-directory="$PWD" -p MemoryMax=2G -p MemorySwapMax=0 -p OOMPolicy=kill /usr/bin/env ISH_LAZY_TRACE=1 /usr/bin/time -v timeout 300 python3 tests/reproduce-code-mode.py ish-code emulator/build/ish -f guest /codex/codex-code-mode-host || status=1
           sudo systemd-run --wait --pipe --collect --working-directory="$PWD" -p MemoryMax=2G -p MemorySwapMax=0 -p OOMPolicy=kill /usr/bin/env ISH_LAZY_TRACE=1 /usr/bin/time -v timeout 300 python3 tests/reproduce-code-mode.py ish-code-no-probes emulator/build/ish -f guest /usr/bin/env OPENSSL_armcap=0 /codex/codex-code-mode-host || status=1
+          /usr/bin/time -v timeout 300 python3 tests/reproduce-code-mode.py linux-code-jitless package/codex-code-mode-host-jitless-diagnostic || status=1
+          sudo systemd-run --wait --pipe --collect --working-directory="$PWD" -p MemoryMax=2G -p MemorySwapMax=0 -p OOMPolicy=kill /usr/bin/env ISH_LAZY_TRACE=1 /usr/bin/time -v timeout 300 python3 tests/reproduce-code-mode.py ish-code-jitless emulator/build/ish -f guest /codex/codex-code-mode-host-jitless-diagnostic || status=1
           exit "$status"
       - name: Print failure diagnostics
         if: always()
