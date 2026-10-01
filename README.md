@@ -2,9 +2,27 @@
 
 This repository builds **OpenAI's real Codex CLI** for the ARM64 Alpine guest in [iSH-AOK](https://github.com/emkey1/ish-AOK). It pins OpenAI Codex [`rust-v0.158.0`](https://github.com/openai/codex/tree/rust-v0.158.0), commit `064c6b8c737f5b41d171fdda80bd9ef10ad06eb3`, and applies two small Linux subprocess compatibility changes. The target is `aarch64-unknown-linux-musl`.
 
-**Device status: the interactive shell smoke test passed on the user's iSH-AOK device.** Codex 0.158.0 with **GPT-5.5, medium reasoning**, the daemon disabled, and code-mode hosting disabled executed `printf 'ish-shell-ok\n'`, displayed `ish-shell-ok`, and returned **exit status 0**. The original crash diagnostics were supplied for an iPhone 13 Pro running iSH-AOK build 556; the successful screenshot did not independently identify the hardware. This verifies that small direct shell command, not unrestricted compatibility with every workload or model. GPT-6/GPT-5.6 code-mode-only models remain unsupported by this workaround.
+**Device status: the interactive shell smoke test passed on the user's iSH-AOK device.** Codex 0.158.0 with **GPT-5.5, medium reasoning**, the daemon disabled, and code-mode hosting disabled executed `printf 'ish-shell-ok\n'`, displayed `ish-shell-ok`, and returned **exit status 0**. The original crash diagnostics were supplied for an iPhone 13 Pro running iSH-AOK build 556; the successful screenshot did not independently identify the hardware. This verifies that small direct shell command, not unrestricted compatibility with every workload or model. GPT-6 has a separate opt-in [direct-tool compatibility patch](compat/README.md), verified with mock model responses under unmodified iSH; authenticated GPT-6 execution on the device remains unverified.
 
 **Build status:** real binaries were compiled successfully in [build run 36677875179](https://github.com/leungantoine/codex-ish/actions/runs/36677875179). The license-complete [Release `ish-v0.158.0-3.1`](https://github.com/leungantoine/codex-ish/releases/tag/ish-v0.158.0-3.1) passed [final verification](https://github.com/leungantoine/codex-ish/actions/runs/36732272923). Download the [latest Release](https://github.com/leungantoine/codex-ish/releases/latest), containing `codex-ish-aarch64.tar.gz` and `codex-ish-aarch64.tar.gz.sha256`. The user subsequently demonstrated an interactive model response and successful local shell execution with the compatibility settings below.
+
+## GPT-6-Luna, Sol, and Astra: install the Codex direct-tool patch
+
+The [compatibility patch](compat/README.md) uses Codex's existing direct shell tools and bypasses the failing local V8 code-mode runtime. It works with the current released binary and does **not** require an iSH-AOK app update. Install the normal Codex release first, then:
+
+```sh
+cd "$HOME"
+curl -fL --retry 3 https://raw.githubusercontent.com/leungantoine/codex-ish/main/install-direct-tools.sh -o install-direct-tools.sh
+sh install-direct-tools.sh
+export PATH="$HOME/.local/bin:$PATH"
+codex-gpt6 --sandbox danger-full-access --ask-for-approval on-request
+```
+
+The separate `codex-gpt6` launcher defaults to GPT-6-Luna and medium reasoning. Use `--model gpt-6-sol` or `--model gpt-6-astra` to select the other tested configurations. It pins a checksum-verified catalog that changes those models' tool-mode preference to direct execution. The binary, model identity, authentication, existing user config, and normal `codex` command are preserved. The current pinned catalog does not add GPT-6.1.
+
+Start a new session and ask it to actually execute `printf 'ish-gpt6-shell-ok\\n'` using the shell tool and show the output and exit status. Success requires a real tool execution card and exit status 0, not predicted output. Commands have access to guest files and network in this unsandboxed configuration.
+
+[Run 36888592596](https://github.com/leungantoine/codex-ish/actions/runs/36888592596) verified the actual released ARM64 binary's GPT-6-Luna, Sol, and Astra configurations on native Linux and **unmodified iSH-AOK build 556**. All six cases advertised direct shell schemas, executed a real random-marker command, returned output and exit status 17 to the next request, and exited zero without invoking V8. The response source was a **local mock server**: these tests establish the Codex execution path, not authenticated service acceptance or the real model's tool choice. The real GPT-6 service and interactive iOS test are still required. [Details, limitations, and rollback](compat/README.md).
 
 ## Install directly in iSH-AOK
 
@@ -102,7 +120,7 @@ The pinned catalog requires code mode for GPT-6-Luna and the other GPT-6/GPT-5.6
 
 Changing iSH's `pt_set_flags` to use its existing `mem_lazy_populate` helper allowed the **unchanged released Codex code-mode host** to execute JavaScript, await a real IPC tool callback, return the callback's random nonce, shut down, and exit zero at **63 MiB maximum RSS**. Actual Codex pipe and PTY shell tests also passed after that emulator change. See [verification run 36813443833](https://github.com/leungantoine/codex-ish/actions/runs/36813443833) and the [candidate iSH patch](experimental/ish-aok-556-partial-mprotect.patch).
 
-**This needs an updated iSH-AOK iOS app, not another installation of the current Codex archive.** No updated iOS app has been built or installed here, and authenticated GPT-6 tool execution on the device remains unverified. The candidate requires app-level review and regression testing; the finite lazy-reservation table can still force a large materialization if split slots run out. Keep using the documented GPT-5.5 configuration until an updated app passes device tests. The stable release and installer defaults remain unchanged.
+**Running V8 locally still needs an updated iSH-AOK iOS app.** The newer [Codex direct-tool patch](compat/README.md) bypasses that runtime and can be installed from the terminal using the current app and binary. No updated iOS app has been built here. The emulator patch remains a separate candidate requiring app-level review and regression testing; the finite lazy-reservation table can still force a large materialization if split slots run out. Authenticated GPT-6 tool execution on the device remains unverified. The stable release and normal installer defaults remain unchanged.
 
 ### Diagnose the reported device crash
 
