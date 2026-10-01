@@ -63,8 +63,8 @@ jobs:
           set -uo pipefail
           status=0
           /usr/bin/time -v timeout 300 python3 tests/reproduce-code-mode.py linux-code package/codex-code-mode-host || status=1
-          /usr/bin/time -v timeout 300 python3 tests/reproduce-code-mode.py ish-code emulator/build/ish -f guest /codex/codex-code-mode-host || status=1
-          /usr/bin/time -v timeout 300 python3 tests/reproduce-code-mode.py ish-code-no-probes emulator/build/ish -f guest /usr/bin/env OPENSSL_armcap=0 /codex/codex-code-mode-host || status=1
+          sudo systemd-run --quiet --wait --pipe --collect --working-directory="$PWD" -p MemoryMax=2G -p MemorySwapMax=0 -p MemoryOOMGroup=yes /usr/bin/time -v timeout 300 python3 tests/reproduce-code-mode.py ish-code emulator/build/ish -f guest /codex/codex-code-mode-host || status=1
+          sudo systemd-run --quiet --wait --pipe --collect --working-directory="$PWD" -p MemoryMax=2G -p MemorySwapMax=0 -p MemoryOOMGroup=yes /usr/bin/time -v timeout 300 python3 tests/reproduce-code-mode.py ish-code-no-probes emulator/build/ish -f guest /usr/bin/env OPENSSL_armcap=0 /codex/codex-code-mode-host || status=1
           exit "$status"
       - name: Print failure diagnostics
         if: failure()
