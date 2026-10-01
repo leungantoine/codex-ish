@@ -26,7 +26,7 @@ cat > "$work/codex-gpt6" <<'LAUNCHER'
 #!/bin/sh
 exec "$HOME/.local/opt/codex-ish/codex" \
   --no-daemon --disable code_mode_host --disable code_mode --disable code_mode_only \
-  --model gpt-6-luna -c 'model_reasoning_effort="medium"' \
+  -c 'model="gpt-6-luna"' -c 'model_reasoning_effort="medium"' \
   -c "model_catalog_json=\"$HOME/.local/opt/codex-ish-direct/models-direct.json\"" "$@"
 LAUNCHER
 chmod 755 "$work/codex-gpt6"
