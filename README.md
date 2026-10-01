@@ -2,9 +2,9 @@
 
 This repository builds **OpenAI's real Codex CLI** for the ARM64 Alpine guest in [iSH-AOK](https://github.com/emkey1/ish-AOK). It pins OpenAI Codex [`rust-v0.158.0`](https://github.com/openai/codex/tree/rust-v0.158.0), commit `064c6b8c737f5b41d171fdda80bd9ef10ad06eb3`, and applies two small Linux subprocess compatibility changes. The target is `aarch64-unknown-linux-musl`.
 
-**Device status:** the shell-command crash was reported on an **iPhone 13 Pro running iSH-AOK build 556**, using Alpine 3.23.3 ARM64. The published binary is **not yet confirmed working on the device**. The updated launcher supplies `--no-daemon` and disables the code-mode host, whose V8 execution fails in the matching iSH emulator. Ordinary shell execution passes in that emulator; the launcher change still needs an iPhone retest.
+**Device status: the interactive shell smoke test passed on the user's iSH-AOK device.** Codex 0.158.0 with **GPT-5.5, medium reasoning**, the daemon disabled, and code-mode hosting disabled executed `printf 'ish-shell-ok\n'`, displayed `ish-shell-ok`, and returned **exit status 0**. The original crash diagnostics were supplied for an iPhone 13 Pro running iSH-AOK build 556; the successful screenshot did not independently identify the hardware. This verifies that small direct shell command, not unrestricted compatibility with every workload or model. GPT-6/GPT-5.6 code-mode-only models remain unsupported by this workaround.
 
-**Build status:** real binaries were compiled successfully in [build run 36677875179](https://github.com/leungantoine/codex-ish/actions/runs/36677875179). The license-complete [Release `ish-v0.158.0-3.1`](https://github.com/leungantoine/codex-ish/releases/tag/ish-v0.158.0-3.1) passed [final verification](https://github.com/leungantoine/codex-ish/actions/runs/36732272923). Download the [latest Release](https://github.com/leungantoine/codex-ish/releases/latest), containing `codex-ish-aarch64.tar.gz` and `codex-ish-aarch64.tar.gz.sha256`. Authentication and shell execution on iOS still require the device test below.
+**Build status:** real binaries were compiled successfully in [build run 36677875179](https://github.com/leungantoine/codex-ish/actions/runs/36677875179). The license-complete [Release `ish-v0.158.0-3.1`](https://github.com/leungantoine/codex-ish/releases/tag/ish-v0.158.0-3.1) passed [final verification](https://github.com/leungantoine/codex-ish/actions/runs/36732272923). Download the [latest Release](https://github.com/leungantoine/codex-ish/releases/latest), containing `codex-ish-aarch64.tar.gz` and `codex-ish-aarch64.tar.gz.sha256`. The user subsequently demonstrated an interactive model response and successful local shell execution with the compatibility settings below.
 
 ## Install directly in iSH-AOK
 
@@ -43,15 +43,23 @@ You can also download the two Release assets yourself, run `sha256sum -c codex-i
 codex login --device-auth
 mkdir -p "$HOME/codex-test"
 cd "$HOME/codex-test"
-codex --no-daemon --sandbox danger-full-access --ask-for-approval on-request
+codex --model gpt-5.5 --disable code_mode --disable code_mode_only \
+  -c 'model_reasoning_effort="medium"' \
+  --sandbox danger-full-access --ask-for-approval on-request
 ```
 
-Ask Codex to run `printf 'ish-shell-ok\n'` with its local shell and show the output. Check that the command exits successfully and displays `ish-shell-ok`. For an unattended smoke test after login:
+The installer launcher adds `--no-daemon --disable code_mode_host`. Use the displayed GPT-5.5 model and medium reasoning: the backend rejected the inherited `max` reasoning setting for this model. Explicit command-line flags avoid editing or overwriting an existing user configuration.
+
+Ask Codex to **actually execute** `printf 'ish-shell-ok\n'` with its local shell and show the real output and exit status. The user device test passed with output `ish-shell-ok` and exit status `0`. A predicted result without a tool execution is not a passing test.
+
+For an optional unattended smoke test after login (the interactive path above is the device-verified path):
 
 ```sh
-codex exec --sandbox danger-full-access --ask-for-approval never \
+codex --disable code_mode --disable code_mode_only \
+  -c 'model_reasoning_effort="medium"' \
+  exec --model gpt-5.5 --sandbox danger-full-access --ask-for-approval never \
   --skip-git-repo-check \
-  "Use the local shell to run printf 'ish-shell-ok\\n', then report its exact output."
+  "Use the local shell to run printf 'ish-shell-ok\\n', then report its exact output and exit status."
 ```
 
 The archive's `diagnostics/ish-syscall-probe` prints the actual `PR_SET_PDEATHSIG`, `pidfd_open`, `waitid(P_PIDFD)`, and `waitpid` results in the iPad guest. Run it if subprocesses still fail, and include its output with the Codex error in an issue. It does not use the network or credentials.
@@ -83,30 +91,33 @@ CI checks that each executable, including bundled `rg` and the diagnostic probe,
 - [The subprocess verification workflow](.github/workflows/verify-release.yml) compiles the exact patched PTY module and vendored Tokio into a native Linux harness. All three test modes passed. It checks 20 worker-thread shell spawns, stdout/stderr, exit status 17, and child termination/reaping. A test-only syscall shim exercises `prctl`/`waitid(P_PIDFD)` returning `EINVAL`, verifies the parent guard is skipped, and checks that `EPERM` remains fatal. The shim is never included in the Release.
 - [Emulator run 36787134523](https://github.com/leungantoine/codex-ish/actions/runs/36787134523) built iSH-AOK Release 556 (`19b129bed782897a94d56e1855497f831cfdd405`) on an ARM64 Linux host and ran Alpine 3.23.3 through its guest kernel and ARM64 JIT. The downloaded, unchanged Release binary passed actual `command/exec` pipe and PTY shell calls, output capture and exit status 17. Worker-thread fork, posix_spawn, and the actual Codex setup-helper handshake also passed. The updated installer and embedded-mode launcher passed on native ARM64 Linux. This test uses guest `/bin/sh`; native iSH-AOK shell applets, the interactive TUI/model flow, device authentication, and iOS memory limits were not exercised.
 - [Launcher verification run 36811040124](https://github.com/leungantoine/codex-ish/actions/runs/36811040124) tested the full installer and `--launcher-only` update, confirmed `code_mode_host` is disabled, and passed native ARM64 and iSH build 556 pipe/PTY shell calls with the compatibility settings. Its optional code-mode comparison reported **`oom-kill`, memory peak 2.0 GiB**, during actual V8 execution in both iSH cases, with and without OpenSSL CPU probes. Native Linux JavaScript execution passed. The overall workflow's success covers the launcher/shell checks; it does not mean the optional code-mode host passed.
+- **User device verification:** the supplied screenshots showed all installation checksums passing, `codex-cli 0.158.0`, an interactive GPT-5.5 medium session, an actual shell tool execution of `printf 'ish-shell-ok\n'`, output `ish-shell-ok`, and exit status **0**. This is device evidence beyond Linux/QEMU/emulator checks. No user screenshot or raw device diagnostics are committed to this public repository.
 - The original binaries are from Release `ish-v0.158.0-3`; the license-complete package `ish-v0.158.0-3.1` preserves those executable hashes. See [the verification run](https://github.com/leungantoine/codex-ish/actions/runs/36732272923) for the test results and publication.
 
 These native harness tests exercise the patched source on Linux. They do not exercise the static ARM64 binary under iSH’s syscall implementation.
 
 ### Diagnose the reported device crash
 
-A subsequent device test reached the interactive UI and received a model response, but `gpt-6-luna` refused the shell call because the code-mode host was disabled. Its displayed `ish-shell-ok` was **predicted output, not an executed command**. The pinned upstream catalog marks the GPT-6 and GPT-5.6 models as `code_mode_only`, which overrides feature flags. It marks `gpt-5.5` with no required code-mode override. Start a **new session with `--model gpt-5.5 --disable code_mode --disable code_mode_only`** for the direct-shell device test; do not resume the failing GPT-6 session. Backend availability and successful device execution with this model still need verification.
+A subsequent device test reached the interactive UI and received a model response, but `gpt-6-luna` refused the shell call because the code-mode host was disabled. Its displayed `ish-shell-ok` was **predicted output, not an executed command**. The pinned upstream catalog marks the GPT-6 and GPT-5.6 models as `code_mode_only`, which overrides feature flags. It marks `gpt-5.5` with no required code-mode override. Start a **new session with `--model gpt-5.5 --disable code_mode --disable code_mode_only`** for the direct-shell device test; do not resume the failing GPT-6 session. The follow-up device screenshot showed successful shell execution with GPT-5.5 at medium reasoning, real output `ish-shell-ok`, and exit status `0`. The first attempt failed because the previous `max` reasoning level was unsupported; selecting medium resolved that request error.
 
 The device diagnostics recorded an ARM64 illegal instruction `0xd53b2400` at `0x4978184` in `codex-code-mode-host`. The published binary's ELF symbol table identifies that address as OpenSSL's `_armv8_rng_probe` (RNDR); the return address is in `arm_probe_for`. iSH records this event before delivering SIGILL, including signals caught by an application. OpenSSL catches unsupported CPU-feature probes, so the event alone does not establish the native app's crash cause.
 
-[Code-mode reproduction run 36811040124](https://github.com/leungantoine/codex-ish/actions/runs/36811040124) completed a real host handshake and JavaScript execution on native ARM64 Linux. The same published host passed its handshake but failed during JavaScript execution under iSH build 556, both with normal CPU probing and with `OPENSSL_armcap=0` set **inside the guest**. Both emulator services reached the **2.0 GiB host memory limit** and reported **`oom-kill`** in about one second. The comparison retained logs. This establishes an emulator memory failure; attributing the iPhone app's closure to the same failure remains an inference until its native crash report or successful workaround test is available. Ordinary Codex pipe/PTY shell execution continued to pass. This reproduces an additional runtime failure absent from the earlier shell tests; the native iOS crash report is still needed to confirm the device's cause.
+[Code-mode reproduction run 36811040124](https://github.com/leungantoine/codex-ish/actions/runs/36811040124) completed a real host handshake and JavaScript execution on native ARM64 Linux. The same published host passed its handshake but failed during JavaScript execution under iSH build 556, both with normal CPU probing and with `OPENSSL_armcap=0` set **inside the guest**. Both emulator services reached the **2.0 GiB host memory limit** and reported **`oom-kill`** in about one second. The comparison retained logs. This establishes an emulator memory failure; attributing the iPhone app's closure to the same failure remains an inference until a native crash report confirms it. The subsequent successful direct-tool device test supports bypassing this runtime. Ordinary Codex pipe/PTY shell execution continued to pass. This reproduces an additional runtime failure absent from the earlier shell tests; the native iOS crash report is still needed to confirm the device's cause.
 
-For an immediate comparison using the existing binary:
+For the configuration that passed the interactive device test:
 
 ```sh
-codex --no-daemon --disable code_mode_host \\
+codex --no-daemon --model gpt-5.5 --disable code_mode_host \
+  --disable code_mode --disable code_mode_only \
+  -c 'model_reasoning_effort="medium"' \
   --sandbox danger-full-access --ask-for-approval on-request
 ```
 
-Ask it to execute `printf 'ish-shell-ok\\n'`. The updated installer supplies the first two flags automatically. This is a compatibility workaround with emulator verification; it is **not yet confirmed on the iPhone**. If it still closes, reopen iSH-AOK, select **Support → Diagnostics → Share**, and attach the export, including the crash-time JSON in its `MetricKitDiagnostics` subfolder. Preserve the exact crash time, iSH build number, `codex --version`, and diagnostic probe output. A `JetsamEvent` should name the main `iSH-AOK` process with a termination reason before attributing its closure to memory pressure; a FileProvider-only termination does not establish that. Keep authentication files and tokens private.
+Ask it to execute `printf 'ish-shell-ok\n'`. The installer supplies `--no-daemon --disable code_mode_host`; GPT-5.5 and medium reasoning must be selected as shown. The small interactive shell test is confirmed by the user's screenshot. If it still closes, reopen iSH-AOK, select **Support → Diagnostics → Share**, and attach the export, including the crash-time JSON in its `MetricKitDiagnostics` subfolder. Preserve the exact crash time, iSH build number, `codex --version`, and diagnostic probe output. A `JetsamEvent` should name the main `iSH-AOK` process with a termination reason before attributing its closure to memory pressure; a FileProvider-only termination does not establish that. Keep authentication files and tokens private.
 
 If further isolation is needed, the previous diagnostic comparison also disables `shell_snapshot` and `unified_exec`, selecting the legacy shell path. These extra flags are not part of the default launcher.
 
-**Verification limit:** QEMU runs ordinary Linux syscalls, not iSH-AOK's implementation. CI cannot prove that login or child shell commands work on your iPad. The final `printf` test above must be run inside iSH-AOK. A failure there should be reported with the diagnostic probe output, iSH-AOK version, and `codex --version`.
+**Verification limit:** QEMU runs ordinary Linux syscalls, not iSH-AOK's implementation. CI cannot prove that login or child shell commands work on your iPad. The user's successful `printf` device test covers the documented direct-tool configuration; code-mode hosting, daemon mode, other models, and broader workloads remain unverified or unsupported. A failure there should be reported with the diagnostic probe output, iSH-AOK version, and `codex --version`.
 
 ## Rebuild and update the pinned Codex release
 
