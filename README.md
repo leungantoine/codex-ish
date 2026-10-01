@@ -2,9 +2,9 @@
 
 This repository builds **OpenAI's real Codex CLI** for the ARM64 Alpine guest in [iSH-AOK](https://github.com/emkey1/ish-AOK). It pins OpenAI Codex [`rust-v0.158.0`](https://github.com/openai/codex/tree/rust-v0.158.0), commit `064c6b8c737f5b41d171fdda80bd9ef10ad06eb3`, and applies two small Linux subprocess compatibility changes. The target is `aarch64-unknown-linux-musl`.
 
-**iPad status:** a user reports that startup requires `--no-daemon` and requesting a shell command crashes the entire iSH-AOK app. The published binary is **not yet working on the device**. Linux/QEMU verification below does not establish iSH compatibility. Investigation is ongoing.
+**Device status:** the shell-command crash was reported on an **iPhone 13 Pro running iSH-AOK build 556**, using Alpine 3.23.3 ARM64. The published binary is **not yet confirmed working on the device**. The updated launcher supplies `--no-daemon` and disables the code-mode host, whose V8 execution fails in the matching iSH emulator. Ordinary shell execution passes in that emulator; the launcher change still needs an iPhone retest.
 
-**Build status:** real binaries were compiled successfully in [build run 36677875179](https://github.com/leungantoine/codex-ish/actions/runs/36677875179). The license-complete [Release `ish-v0.158.0-3.1`](https://github.com/leungantoine/codex-ish/releases/tag/ish-v0.158.0-3.1) passed [final verification](https://github.com/leungantoine/codex-ish/actions/runs/36732272923). Download the [latest Release](https://github.com/leungantoine/codex-ish/releases/latest), containing `codex-ish-aarch64.tar.gz` and `codex-ish-aarch64.tar.gz.sha256`. Authentication and shell execution inside iSH-AOK on an iPad still require the device test below.
+**Build status:** real binaries were compiled successfully in [build run 36677875179](https://github.com/leungantoine/codex-ish/actions/runs/36677875179). The license-complete [Release `ish-v0.158.0-3.1`](https://github.com/leungantoine/codex-ish/releases/tag/ish-v0.158.0-3.1) passed [final verification](https://github.com/leungantoine/codex-ish/actions/runs/36732272923). Download the [latest Release](https://github.com/leungantoine/codex-ish/releases/latest), containing `codex-ish-aarch64.tar.gz` and `codex-ish-aarch64.tar.gz.sha256`. Authentication and shell execution on iOS still require the device test below.
 
 ## Install directly in iSH-AOK
 
@@ -22,7 +22,18 @@ export PATH="$HOME/.local/bin:$PATH"
 codex --version
 ```
 
-The installer downloads `codex-ish-aarch64.tar.gz` and its `.sha256` file from the repository's latest Release, verifies the archive and internal checksums, extracts all companion executables to `~/.local/opt/codex-ish`, creates a `~/.local/bin/codex` launcher that supplies `--no-daemon`, and links `~/.local/bin/rg`. It rejects other architectures. The archive includes a static ARM64 musl `rg` in `codex-path/`, matching OpenAI's package layout. Inspect `install.sh` before running it if you wish. Add `export PATH="$HOME/.local/bin:$PATH"` to `~/.profile` for future sessions (and to `~/.bashrc` if you use interactive bash without a login shell). If no Release exists or a download/checksum fails, installation stops.
+The installer downloads `codex-ish-aarch64.tar.gz` and its `.sha256` file from the repository's latest Release, verifies the archive and internal checksums, extracts all companion executables to `~/.local/opt/codex-ish`, creates a `~/.local/bin/codex` launcher that supplies `--no-daemon --disable code_mode_host`, and links `~/.local/bin/rg`. It rejects other architectures. The archive includes a static ARM64 musl `rg` in `codex-path/`, matching OpenAI's package layout. Inspect `install.sh` before running it if you wish. Add `export PATH="$HOME/.local/bin:$PATH"` to `~/.profile` for future sessions (and to `~/.bashrc` if you use interactive bash without a login shell). If no Release exists or a download/checksum fails, installation stops.
+
+### Update an existing installation without downloading the archive again
+
+```sh
+curl -fL https://raw.githubusercontent.com/leungantoine/codex-ish/main/install.sh -o install-codex-ish.sh
+sh install-codex-ish.sh --launcher-only
+export PATH="$HOME/.local/bin:$PATH"
+codex --version
+```
+
+This updates only the launcher and requires an installed executable. The compiled Release binaries and their checksums remain unchanged. The code-mode host is still packaged, but the launcher disables it to avoid the reproduced V8 failure. Direct shell tools remain available. Models requiring code-mode-only tools may reject this configuration. `CODEX_ISH_USE_CODE_MODE_HOST=1` opts into the unsupported host for investigation; invoking the installed binary directly also bypasses the launcher defaults.
 
 You can also download the two Release assets yourself, run `sha256sum -c codex-ish-aarch64.tar.gz.sha256`, and extract the archive into `~/.local/opt/codex-ish`. Keep `codex-code-mode-host` and `codex-responses-api-proxy` beside `codex`; do not copy only the CLI executable.
 
@@ -77,15 +88,20 @@ These native harness tests exercise the patched source on Linux. They do not exe
 
 ### Diagnose the reported device crash
 
-For a comparison using the existing binary, temporarily disable shell snapshots, code-mode hosting, and the unified executor:
+The device diagnostics recorded an ARM64 illegal instruction `0xd53b2400` at `0x4978184` in `codex-code-mode-host`. The published binary's ELF symbol table identifies that address as OpenSSL's `_armv8_rng_probe` (RNDR); the return address is in `arm_probe_for`. iSH records this event before delivering SIGILL, including signals caught by an application. OpenSSL catches unsupported CPU-feature probes, so the event alone does not establish the native app's crash cause.
+
+[Code-mode reproduction run 36810389763](https://github.com/leungantoine/codex-ish/actions/runs/36810389763) completed a real host handshake and JavaScript execution on native ARM64 Linux. The same published host passed its handshake but failed during JavaScript execution under iSH build 556, both with normal CPU probing and with `OPENSSL_armcap=0` set **inside the guest**. The comparison used a 2 GiB host memory limit and retained logs. Ordinary Codex pipe/PTY shell execution continued to pass. This reproduces an additional runtime failure absent from the earlier shell tests; the native iOS crash report is still needed to confirm the device's cause.
+
+For an immediate comparison using the existing binary:
 
 ```sh
-codex --no-daemon --disable shell_snapshot --disable code_mode_host \
-  --disable unified_exec \
+codex --no-daemon --disable code_mode_host \\
   --sandbox danger-full-access --ask-for-approval on-request
 ```
 
-Ask for the same `printf` command. This is an **unverified diagnostic comparison**, not a confirmed fix. It selects the legacy shell execution path, which avoids re-executing the full Codex binary as a setup helper. If the selected model rejects this feature combination, include that error instead. Preserve the iSH-AOK build number, probe output, and the crash-time iOS Analytics report. `JetsamEvent` can identify an OS memory-pressure termination; an `iSH-AOK` report can identify a native crash. Share only the relevant crash sections, without authentication files or tokens.
+Ask it to execute `printf 'ish-shell-ok\\n'`. The updated installer supplies the first two flags automatically. This is a compatibility workaround with emulator verification; it is **not yet confirmed on the iPhone**. If it still closes, reopen iSH-AOK, select **Support → Diagnostics → Share**, and attach the export, including the crash-time JSON in its `MetricKitDiagnostics` subfolder. Preserve the exact crash time, iSH build number, `codex --version`, and diagnostic probe output. A `JetsamEvent` should name the main `iSH-AOK` process with a termination reason before attributing its closure to memory pressure; a FileProvider-only termination does not establish that. Keep authentication files and tokens private.
+
+If further isolation is needed, the previous diagnostic comparison also disables `shell_snapshot` and `unified_exec`, selecting the legacy shell path. These extra flags are not part of the default launcher.
 
 **Verification limit:** QEMU runs ordinary Linux syscalls, not iSH-AOK's implementation. CI cannot prove that login or child shell commands work on your iPad. The final `printf` test above must be run inside iSH-AOK. A failure there should be reported with the diagnostic probe output, iSH-AOK version, and `codex --version`.
 
@@ -103,7 +119,7 @@ The source overlay can be reproduced on an Ubuntu 24.04 builder with Rust 1.95.0
 
 ### Common failures
 
-- **Startup requires `--no-daemon`:** use that flag for interactive sessions, including `resume` and `fork`. The updated installer supplies `--no-daemon` automatically; rerun the installer to update the launcher. Invoking `~/.local/opt/codex-ish/codex` directly bypasses it. `CODEX_ISH_USE_DAEMON=1` explicitly opts into the unsupported daemon path.
+- **Startup requires `--no-daemon`:** use that flag for interactive sessions, including `resume` and `fork`. The updated installer supplies `--no-daemon` automatically; use `sh install-codex-ish.sh --launcher-only` to update the launcher. Invoking `~/.local/opt/codex-ish/codex` directly bypasses it. `CODEX_ISH_USE_DAEMON=1` explicitly opts into the unsupported daemon path.
 - **The entire iSH-AOK app closes on a shell command:** this is a reported unresolved failure. After reopening the app, run the diagnostic probe. Record the iSH-AOK build number and the matching iOS Analytics `iSH-AOK` crash or `JetsamEvent` report; these distinguish a native emulator crash from an OS memory-pressure termination.
 
 - **`uname -m` says `i686` or `x86_64`:** switch to iSH-AOK's ARM64 Alpine root.
