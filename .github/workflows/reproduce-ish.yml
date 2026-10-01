@@ -5,6 +5,7 @@ on:
     paths:
       - .github/workflows/reproduce-ish.yml
       - tests/reproduce-ish.py
+      - tests/reproduce-code-mode.py
 permissions:
   contents: read
 jobs:
@@ -56,6 +57,15 @@ jobs:
           timeout 180 emulator/build/ish -f guest /codex/diagnostics/ish-syscall-probe 555>probe-kernel.log 2> >(tee probe-stderr.log >&2)
           timeout 180 emulator/build/ish -f guest /codex/codex --version 555>version-kernel.log 2> >(tee version-stderr.log >&2)
           timeout 600 python3 tests/reproduce-ish.py ish emulator/build/ish -f guest /codex/codex app-server
+      - name: Exercise code-mode host and V8 on Linux and iSH
+        if: always()
+        run: |
+          set -uo pipefail
+          status=0
+          /usr/bin/time -v timeout 300 python3 tests/reproduce-code-mode.py linux-code package/codex-code-mode-host || status=1
+          /usr/bin/time -v timeout 300 python3 tests/reproduce-code-mode.py ish-code emulator/build/ish -f guest /codex/codex-code-mode-host || status=1
+          OPENSSL_armcap=0 /usr/bin/time -v timeout 300 python3 tests/reproduce-code-mode.py ish-code-no-probes emulator/build/ish -f guest /codex/codex-code-mode-host || status=1
+          exit "$status"
       - name: Print failure diagnostics
         if: failure()
         run: |
