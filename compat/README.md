@@ -87,7 +87,7 @@ For each of GPT-6-Luna, Sol, and Astra, on native ARM64 Linux and under iSH:
 3. Codex completed the tool loop and exited zero without invoking the code-mode
    host. The iSH app kernel was not patched for this test.
 
-The installer separately passed a checksum and launcher argument test.
+[Final run 36893869807](https://github.com/leungantoine/codex-ish/actions/runs/36893869807) repeated those six execution cases, installed the real launcher with its checksum-verified catalog, verified an explicit Astra model override parses, and completed the actual launcher's Sol direct shell loop against the mock server. The installer also passed a local checksum and argument test.
 **These tests use a mock backend, not authenticated GPT-6 inference.** They prove
 the real Codex tool execution path, not real service acceptance or model tool
 choice. Actual GPT-6 inference and this configuration's interactive iOS behavior
