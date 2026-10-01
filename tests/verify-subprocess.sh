@@ -4,7 +4,14 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/inputs" "$work/harness/src"
-tar -xzf "$repo_root/ish-overlay.tar.gz" -C "$work/inputs"
+if [[ -n "${ISH_PATCHED_SOURCE:-}" ]]; then
+  mkdir -p "$work/inputs/codex-rs/vendor"
+  cp -a "$ISH_PATCHED_SOURCE/codex-rs/vendor/tokio-1.52.3" "$work/inputs/codex-rs/vendor/"
+  mkdir -p "$work/inputs/codex-rs/utils/pty/src"
+  cp "$ISH_PATCHED_SOURCE/codex-rs/utils/pty/src/process_group.rs" "$work/inputs/codex-rs/utils/pty/src/"
+else
+  tar -xzf "$repo_root/ish-overlay.tar.gz" -C "$work/inputs"
+fi
 cp "$work/inputs/codex-rs/utils/pty/src/process_group.rs" "$work/harness/src/process_group.rs"
 cat > "$work/harness/Cargo.toml" <<EOF
 [package]

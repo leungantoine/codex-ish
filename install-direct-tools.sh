@@ -7,6 +7,13 @@ if [ ! -x "$binary" ]; then
   echo 'Install codex-ish first using install.sh.' >&2
   exit 1
 fi
+if [ -x "$HOME/.local/opt/codex-ish/codex-gpt6" ] && [ -r "$HOME/.local/opt/codex-ish/compat/models-direct.json" ]; then
+  mkdir -p "$HOME/.local/bin"
+  cp "$HOME/.local/opt/codex-ish/codex-gpt6" "$HOME/.local/bin/.codex-gpt6-new-$$"
+  mv -f "$HOME/.local/bin/.codex-gpt6-new-$$" "$HOME/.local/bin/codex-gpt6"
+  echo 'Installed codex-gpt6 using the catalog bundled with this Codex release.'
+  exit 0
+fi
 for command in curl sha256sum mktemp; do
   if ! command -v "$command" >/dev/null 2>&1; then
     echo 'Run: apk add ca-certificates curl coreutils' >&2

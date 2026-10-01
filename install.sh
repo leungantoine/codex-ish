@@ -20,6 +20,10 @@ SH
   chmod 0755 "$launcher"
   # Rename over the old symlink: writing through it would overwrite the binary.
   mv -f "$launcher" "$HOME/.local/bin/codex"
+  if [ -x "$HOME/.local/opt/codex-ish/codex-gpt6" ]; then
+    cp "$HOME/.local/opt/codex-ish/codex-gpt6" "$HOME/.local/bin/.codex-gpt6-new-$$"
+    mv -f "$HOME/.local/bin/.codex-gpt6-new-$$" "$HOME/.local/bin/codex-gpt6"
+  fi
 }
 
 if [ "${1:-}" = --launcher-only ] && [ "$#" = 1 ]; then

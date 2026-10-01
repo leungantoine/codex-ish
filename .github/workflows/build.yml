@@ -5,28 +5,37 @@ on:
   push:
     paths:
       - .github/workflows/build.yml
-      - ish-overlay.tar.gz
+      - scripts/**
+      - build-tools/**
+      - patches/**
+      - tests/verify-subprocess.sh
+      - tests/ish-syscall-probe.c
       - install.sh
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: ubuntu-24.04
     timeout-minutes: 300
-    permissions:
-      contents: write
     steps:
       - uses: actions/checkout@v4
       - name: Fetch pinned OpenAI source
         run: |
-          git clone --depth 1 --branch rust-v0.158.0 https://github.com/openai/codex.git upstream
-          test "$(git -C upstream rev-parse HEAD)" = 064c6b8c737f5b41d171fdda80bd9ef10ad06eb3
-          tar -xzf ish-overlay.tar.gz -C upstream
-          grep -q 'Some(libc::EINVAL)' upstream/codex-rs/utils/pty/src/process_group.rs
-          grep -q 'wait_result == -1' upstream/codex-rs/vendor/tokio-1.52.3/src/process/unix/pidfd_reaper.rs
+          git clone --depth 1 --branch rust-v0.159.3 https://github.com/openai/codex.git upstream
+          test "$(git -C upstream rev-parse HEAD)" = 01fc69f4026735edfdf6789820549727a4867b11
+          python3 scripts/prepare-ish-source.py upstream
+          cp -a build-tools upstream/
+          cp scripts/build-ish-aarch64.sh scripts/codex-gpt6 upstream/scripts/
+          cp tests/ish-syscall-probe.c upstream/tests/
+          cp README.md upstream/README-ish.md
+          chmod +x upstream/build-tools/* upstream/scripts/build-ish-aarch64.sh
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.95.0'
           targets: aarch64-unknown-linux-musl
+          components: rustfmt, clippy
       - uses: mlugg/setup-zig@v2
         with:
           version: 0.14.0
@@ -47,6 +56,23 @@ jobs:
           df -h /
       - name: Install build and verification tools
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends perl make cmake pkg-config clang libclang-dev qemu-user-static binutils file
+      - uses: actions/cache/restore@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            upstream/codex-rs/target
+          key: ish-1593-rust195-zig014-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ish-1593-rust195-zig014-
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just,cargo-nextest,uv,dotslash
+      - name: Format and test patched subprocess sources
+        run: |
+          (cd upstream && just fmt)
+          (cd upstream && just test -p codex-utils-pty)
+          ISH_PATCHED_SOURCE="$PWD/upstream" bash tests/verify-subprocess.sh
+          python3 scripts/record-patchinfo.py upstream
       - name: Check Rust and Zig static linking
         working-directory: upstream
         run: |
@@ -95,7 +121,7 @@ jobs:
             fi
           done
           (cd "$pkg" && sha256sum -c SHA256SUMS)
-          qemu-aarch64-static "$pkg/codex" --version
+          qemu-aarch64-static "$pkg/codex" --version | grep -Fx "codex-cli 0.159.3"
           qemu-aarch64-static "$pkg/codex-path/rg" --version
           qemu-aarch64-static "$pkg/diagnostics/ish-syscall-probe"
           tar -tzf dist/codex-ish-aarch64.tar.gz > "$RUNNER_TEMP/archive-list.txt"
@@ -108,17 +134,87 @@ jobs:
             upstream/dist/codex-ish-aarch64.tar.gz
             upstream/dist/codex-ish-aarch64.tar.gz.sha256
           if-no-files-found: error
-      - name: Publish directly installable release
-        if: github.ref == 'refs/heads/main'
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            upstream/codex-rs/target
+          key: ish-1593-rust195-zig014-${{ github.run_id }}-${{ github.run_attempt }}
+
+  verify:
+    needs: build
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          name: codex-ish-aarch64
+      - name: Build released iSH-AOK emulator
+        run: |
+          set -euo pipefail
+          sudo apt-get update
+          sudo apt-get install -y meson ninja-build clang llvm libarchive-dev libsqlite3-dev zlib1g-dev musl-tools
+          git clone --depth 1 --branch builds/iSH-AOK_556 https://github.com/emkey1/ish-AOK.git emulator
+          git -C emulator submodule update --init --depth 1 deps/smallclue
+          CC=clang meson setup emulator/build emulator --buildtype=debugoptimized -Dguest_archs=arm64 -Dnative_rust=disabled -Dnative_zsh=disabled -Dnative_dash=disabled -Dnative_bash=disabled -Dlog=strace
+          ninja -C emulator/build -j 2 ish tools/fakefsify
+      - name: Prepare checked Codex and Alpine guest
+        run: |
+          set -euo pipefail
+          mkdir package root
+          sha256sum -c codex-ish-aarch64.tar.gz.sha256
+          tar -xzf codex-ish-aarch64.tar.gz -C package
+          (cd package && sha256sum -c SHA256SUMS)
+          base=https://dl-cdn.alpinelinux.org/alpine/v3.23/releases/aarch64
+          curl -fsSL "$base/alpine-minirootfs-3.23.3-aarch64.tar.gz" -o alpine.tar.gz
+          curl -fsSL "$base/alpine-minirootfs-3.23.3-aarch64.tar.gz.sha256" -o alpine.sha256
+          test "$(sha256sum alpine.tar.gz | cut -d ' ' -f1)" = "$(cut -d ' ' -f1 alpine.sha256)"
+          tar -xzf alpine.tar.gz -C root
+          cp -a package root/codex
+          musl-gcc -static -O2 -pthread tests/ish-spawn-probe.c -o root/codex/diagnostics/ish-spawn-probe
+          tar -czf guest.tar.gz -C root .
+          emulator/build/tools/fakefsify guest.tar.gz guest
+      - name: Verify real model tool requests and shell results
+        run: |
+          set -euo pipefail
+          for model in gpt-6-luna gpt-6-sol gpt-6.1-sol gpt-6-astra; do
+            python3 tests/reproduce-direct-model.py "linux-direct-$model" "$PWD/package/compat/models-direct.json" "$model" "$PWD/package/codex"
+            sudo systemd-run --wait --pipe --collect --working-directory="$PWD" -p MemoryMax=2G -p MemorySwapMax=0 -p OOMPolicy=kill timeout 240 python3 tests/reproduce-direct-model.py "ish-direct-$model" /codex/compat/models-direct.json "$model" emulator/build/ish -f guest /codex/codex
+          done
+      - name: Verify installed launcher and explicit model override
+        run: |
+          set -euo pipefail
+          CODEX_ISH_RELEASE_BASE="file://$PWD" sh install.sh
+          sh install-direct-tools.sh
+          "$HOME/.local/bin/codex-gpt6" --model gpt-6.1-sol --version | grep -Fx 'codex-cli 0.159.3'
+          python3 tests/reproduce-direct-model.py linux-launcher "$PWD/package/compat/models-direct.json" gpt-6-luna "$HOME/.local/bin/codex-gpt6"
+          timeout 240 python3 tests/reproduce-ish.py ish-1593 emulator/build/ish -f guest /codex/codex --no-daemon --disable code_mode_host app-server
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: upgraded-subprocess-logs
+          path: '*-stderr.log'
+
+  publish:
+    needs: [build, verify]
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: codex-ish-aarch64
+      - name: Publish verified release
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          tag="ish-v0.158.0-${GITHUB_RUN_NUMBER}"
-          gh release create "$tag" \
-            upstream/dist/codex-ish-aarch64.tar.gz \
-            upstream/dist/codex-ish-aarch64.tar.gz.sha256 \
-            --repo "$GITHUB_REPOSITORY" \
-            --target "$GITHUB_SHA" \
-            --title "Codex 0.158.0 for iSH-AOK (build ${GITHUB_RUN_NUMBER})" \
-            --notes "Built from OpenAI Codex rust-v0.158.0, commit 064c6b8c737f5b41d171fdda80bd9ef10ad06eb3. Includes the iSH subprocess patches. See README.md for installation, security, and verification limits." \
-            --latest
+          sha256sum -c codex-ish-aarch64.tar.gz.sha256
+          tag="ish-v0.159.3-${GITHUB_RUN_NUMBER}"
+          gh release create "$tag" codex-ish-aarch64.tar.gz codex-ish-aarch64.tar.gz.sha256 \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
+            --title "Codex 0.159.3 for iSH-AOK (build ${GITHUB_RUN_NUMBER})" \
+            --notes "OpenAI rust-v0.159.3, commit 01fc69f4026735edfdf6789820549727a4867b11. Static ARM64 musl binaries with subprocess patches and bundled GPT-6/GPT-6.1 direct tools. Verified architecture, checksums, QEMU, patched syscall fallback tests, and real shell roundtrips in unmodified iSH-AOK 556 emulator. Authentication and this version on physical iOS devices remain to be tested. See README for unsandboxed execution and iOS suspension limits." --latest
