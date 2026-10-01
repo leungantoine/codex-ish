@@ -50,6 +50,14 @@ jobs:
             python3 tests/reproduce-direct-model.py "linux-direct-$model" "$PWD/compat/models-direct.json" "$model" "$PWD/package/codex"
             sudo systemd-run --wait --pipe --collect --working-directory="$PWD" -p MemoryMax=2G -p MemorySwapMax=0 -p OOMPolicy=kill timeout 240 python3 tests/reproduce-direct-model.py "ish-direct-$model" /codex/compat/models-direct.json "$model" emulator/build/ish -f guest /codex/codex
           done
+      - name: Verify installed launcher and explicit model override
+        run: |
+          set -euo pipefail
+          mkdir -p "$HOME/.local/opt/codex-ish"
+          ln -s "$PWD/package/codex" "$HOME/.local/opt/codex-ish/codex"
+          sh install-direct-tools.sh
+          "$HOME/.local/bin/codex-gpt6" --model gpt-6-astra --version
+          python3 tests/reproduce-direct-model.py linux-launcher "$PWD/compat/models-direct.json" gpt-6-sol "$HOME/.local/bin/codex-gpt6"
       - name: Print diagnostics
         if: always()
         run: |
