@@ -84,6 +84,31 @@ jobs:
           /usr/bin/time -v timeout 300 python3 tests/reproduce-code-mode.py linux-code-jitless package/codex-code-mode-host-jitless-diagnostic || status=1
           sudo systemd-run --wait --pipe --collect --working-directory="$PWD" -p MemoryMax=2G -p MemorySwapMax=0 -p OOMPolicy=kill /usr/bin/env ISH_LAZY_TRACE=1 /usr/bin/time -v timeout 300 python3 tests/reproduce-code-mode.py ish-code-jitless emulator/build/ish -f guest /codex/codex-code-mode-host-jitless-diagnostic || status=1
           exit "$status"
+      - name: Test experimental iSH partial mprotect materialization
+        if: always()
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          python3 - <<'PYCODE'
+          from pathlib import Path
+          p = Path("emulator/emu/memory.c")
+          s = p.read_text()
+          marker = "int pt_set_flags(struct mem *mem, page_t start, pages_t pages, int flags) {"
+          before, after = s.split(marker, 1)
+          old = "mem_lazy_materialize_range(mem, start, start + pages);"
+          assert old in after
+          after = after.replace(old, "mem_lazy_populate(mem, start, start + pages);", 1)
+          p.write_text(before + marker + after)
+          PYCODE
+          git -C emulator diff > experimental-ish-mprotect.patch
+          ninja -C emulator/build -j 2 ish
+          status=0
+          for mode in default jitless; do
+            host=/codex/codex-code-mode-host
+            if test "$mode" = jitless; then host="$host-jitless-diagnostic"; fi
+            sudo systemd-run --wait --pipe --collect --working-directory="$PWD" -p MemoryMax=2G -p MemorySwapMax=0 -p OOMPolicy=kill /usr/bin/env ISH_LAZY_TRACE=1 /usr/bin/time -v timeout 300 python3 tests/reproduce-code-mode.py "ish-partial-$mode" emulator/build/ish -f guest "$host" || status=1
+          done
+          exit "$status"
       - name: Print failure diagnostics
         if: always()
         run: |
@@ -97,4 +122,5 @@ jobs:
           path: |
             *-stderr.log
             *-kernel.log
+            experimental-ish-mprotect.patch
           if-no-files-found: ignore
