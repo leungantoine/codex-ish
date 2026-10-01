@@ -11,6 +11,8 @@ import time
 
 label, *command = sys.argv[1:]
 messages = queue.Queue()
+callback_inputs = []
+callback_nonce = os.urandom(16).hex()
 
 with open(f"{label}-stderr.log", "wb") as errors:
     os.dup2(errors.fileno(), 555)
@@ -60,6 +62,15 @@ with open(f"{label}-stderr.log", "wb") as errors:
                 raise RuntimeError(f"{label}: {message}; process status={process.poll()}")
             if request_id is None:
                 return message
+            if message.get("type") == "delegate/request":
+                invocation = message["request"]["invocation"]
+                assert invocation["tool_name"]["name"] == "echo", invocation
+                assert invocation["input"] == {"value": "ish-callback-ok"}, invocation
+                callback_inputs.append(invocation["input"])
+                send({"type": "delegate/response", "id": message["id"],
+                      "result": {"status": "ok", "value": {"type": "tool/result",
+                                 "result": {"nonce": callback_nonce}}}})
+                continue
             if message.get("id") == request_id:
                 result = message["result"]
                 if result["status"] != "ok":
@@ -100,6 +111,26 @@ with open(f"{label}-stderr.log", "wb") as errors:
         assert result["Result"]["error_text"] is None, result
         assert "ish-code-mode-ok" in json.dumps(result), result
         print(f"PASS: {label}: actual V8 JavaScript output", flush=True)
+        callback = request(15, {"method": "session/execute", "sessionId": session,
+                               "request": {"tool_call_id": "ish-callback-probe",
+                                           "enabled_tools": [{"name": "echo",
+                                               "tool_name": {"name": "echo", "namespace": None},
+                                               "description": "Return a unique probe nonce",
+                                               "kind": "function", "input_schema": None,
+                                               "output_schema": None}],
+                                           "source": "text((await tools.echo({value:'ish-callback-ok'})).nonce);",
+                                           "yield_time_ms": 1000, "max_output_tokens": 100}})
+        for request_id in range(16, 20):
+            if "Yielded" not in callback:
+                break
+            waited = request(request_id, {"method": "session/wait", "sessionId": session,
+                                         "request": {"cell_id": callback["Yielded"]["cell_id"],
+                                                     "yield_time_ms": 1000}})
+            callback = next(iter(waited["outcome"].values()))
+        assert callback_inputs == [{"value": "ish-callback-ok"}], callback_inputs
+        assert callback["Result"]["error_text"] is None, callback
+        assert callback_nonce in json.dumps(callback), callback
+        print(f"PASS: {label}: V8 awaited real IPC tool callback and returned nonce", flush=True)
         closed = request(20, {"method": "session/shutdown", "sessionId": session})
         assert closed["type"] == "session/closed", closed
         process.stdin.close()
