@@ -72,6 +72,7 @@ Bundled ripgrep: 15.2.0 aarch64-unknown-linux-musl (official release SHA-256 pin
 The Linux bubblewrap sandbox is unavailable in iSH-AOK and is not bundled.
 GPT-6 direct-tool catalog and codex-gpt6 launcher are included; daemon and V8 hosting stay disabled.
 INFO
+cp "$package/BUILDINFO.txt" "$package/BUILDINFO"
 cp ish-compat/models-direct.json ish-compat/PATCHINFO.json "$package/compat/"
 install -m 0755 scripts/codex-gpt6 "$package/codex-gpt6"
 cp README-ish.md "$package/README.md"

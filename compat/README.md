@@ -1,11 +1,22 @@
-# GPT-6 direct-tool patch for Codex 0.158.0
+# GPT-6 direct tools for Codex on iSH-AOK
 
 This opt-in patch bypasses Codex's local V8 code-mode runtime. It uses the real
 released Codex binary and its existing direct shell, approval, output capture,
 and patch tools. It does not modify iSH-AOK or execute JavaScript through a
 replacement evaluator.
 
-## Install on the device
+
+## Recommended installation and upgrade
+
+Use the one-command [setup in the main README](../README.md#install-or-upgrade-with-one-command-recommended), then run `codex`. Setup saves PATH for future iSH sessions and configures plain `codex` with GPT-6-Luna, medium reasoning, direct tools, the daemon disabled, and unsandboxed guest access with approval on request. Guest files and network are accessible. Keep iSH visible during tasks because the reported iOS suspension lock failure is not claimed fixed.
+
+Codex 0.159.3 bundles a matching catalog derived from OpenAI commit `01fc69f4026735edfdf6789820549727a4867b11`. It changes only seven tool-mode fields: the three GPT-6 entries, GPT-6.1-Sol, and the three GPT-5.6 entries. Source pin, original Tokio checksum, and input hashes are in the archive's `compat/PATCHINFO.json`. Use `codex --model gpt-6.1-sol` with this package to select GPT-6.1-Sol. The helper installation recognizes the bundled catalog and does not download the old fallback catalog.
+
+The user confirmed that the earlier GPT-6 direct-tool setup works on their device. That report does not establish every model or task, and physical-device testing of 0.159.3 is still required.
+
+The 0.158.0 instructions and recorded checks below describe the historical fallback retained for that older binary.
+
+## Historical 0.158.0 fallback installation
 
 First install the normal codex-ish release. Then run:
 
@@ -90,8 +101,8 @@ For each of GPT-6-Luna, Sol, and Astra, on native ARM64 Linux and under iSH:
 [Final run 36893869807](https://github.com/leungantoine/codex-ish/actions/runs/36893869807) repeated those six execution cases, installed the real launcher with its checksum-verified catalog, verified an explicit Astra model override parses, and completed the actual launcher's Sol direct shell loop against the mock server. The installer also passed a local checksum and argument test.
 **These tests use a mock backend, not authenticated GPT-6 inference.** They prove
 the real Codex tool execution path, not real service acceptance or model tool
-choice. Actual GPT-6 inference and this configuration's interactive iOS behavior
-still need the device test above. GPT-5.6 shares the metadata patch but was not
+choice. The user subsequently confirmed the earlier GPT-6 setup works on their device.
+Each model and larger workloads still need separate device testing. GPT-5.6 shares the metadata patch but was not
 included in the three-model execution test.
 
 OpenAI's [GPT-6-Luna documentation](https://developers.openai.com/api/docs/models/gpt-6-luna)
@@ -101,6 +112,9 @@ account.
 
 If the service rejects direct tools or the model still asks for code mode, retain
 the real error text and report it. Do not repeatedly enable the V8 host on build
-556. Start normal `codex` with the documented GPT-5.5 configuration to return to
-the device-tested path. Removing `~/.local/bin/codex-gpt6` and
-`~/.local/opt/codex-ish-direct` removes this opt-in patch.
+556. After the recommended setup, use `codex --model gpt-5.5` to select the
+device-tested model; the direct-tool flags and medium reasoning remain active.
+To restore the base launcher, run `sh install-codex-ish.sh --launcher-only`
+with the downloaded base installer. Only after restoring that launcher should
+you remove `~/.local/bin/codex-gpt6` or `~/.local/opt/codex-ish-direct`; plain
+`codex` installed by setup depends on the helper.
