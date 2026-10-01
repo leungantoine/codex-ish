@@ -111,7 +111,7 @@ overrides = ["--no-daemon", "--disable", "code_mode_host", "--disable", "code_mo
              "-c", 'model_reasoning_effort="medium"', "exec", "--model", model,
              "--sandbox", "danger-full-access", "--skip-git-repo-check", "--json",
              "Execute the shell tool once and report the actual result."]
-if command[-1].endswith("/codex-gpt6"):
+if "/.local/bin/" in command[-1] and command[-1].rsplit("/", 1)[-1] in ("codex-gpt6", "codex"):
     # Exercise the installed launcher's own runtime flags and catalog path.
     overrides = overrides[9:]
 env = os.environ.copy()

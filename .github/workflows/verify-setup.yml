@@ -1,0 +1,36 @@
+name: Verify one-command setup and startup launcher
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - setup.sh
+      - .github/workflows/verify-setup.yml
+permissions:
+  contents: read
+jobs:
+  setup:
+    runs-on: ubuntu-24.04-arm
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download checked current release
+        run: |
+          base=https://github.com/leungantoine/codex-ish/releases/latest/download
+          curl -fsSL "$base/codex-ish-aarch64.tar.gz" -o codex-ish-aarch64.tar.gz
+          curl -fsSL "$base/codex-ish-aarch64.tar.gz.sha256" -o codex-ish-aarch64.tar.gz.sha256
+          sha256sum -c codex-ish-aarch64.tar.gz.sha256
+      - name: Install and verify startup PATH and real shell execution
+        run: |
+          set -euo pipefail
+          CODEX_ISH_SETUP_BASE="file://$PWD" CODEX_ISH_RELEASE_BASE="file://$PWD" sh setup.sh
+          env -i HOME="$HOME" PATH=/usr/bin:/bin /bin/bash --login -c 'command -v codex; codex --version'
+          catalog="$HOME/.local/opt/codex-ish/compat/models-direct.json"
+          if [ ! -f "$catalog" ]; then catalog="$HOME/.local/opt/codex-ish-direct/models-direct.json"; fi
+          python3 tests/reproduce-direct-model.py setup-codex "$catalog" gpt-6-luna "$HOME/.local/bin/codex"
+          CODEX_ISH_SETUP_BASE="file://$PWD" CODEX_ISH_RELEASE_BASE="file://$PWD" sh setup.sh
+          test "$(grep -Fc 'export PATH="$HOME/.local/bin:$PATH"' "$HOME/.profile")" = 1
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: startup-launcher-logs
+          path: '*-stderr.log'
