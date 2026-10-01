@@ -22,7 +22,7 @@ codex
 
 The setup downloads the latest published release, verifies archive and internal checksums, installs its executables and matching direct-tool catalog, and saves PATH setup in shell profiles. After reopening iSH you can type `codex` immediately. It defaults to GPT-6-Luna, medium reasoning, direct tools, daemon disabled, and **unsandboxed guest access with approval on request**. Commands can access guest files and network. Authentication and existing configuration are retained; if you are not signed in, run `codex login --device-auth` once. Nothing automatically launches when iSH opens.
 
-Use `codex --model gpt-6-sol` or `codex --model gpt-6-astra` to choose another model. GPT-6.1-Sol requires the 0.159.3 package and its matching catalog. The 0.159.3 build is in progress; until it is published, this command installs the verified 0.158.0 release. Repeating the same command upgrades the binary and launcher. Keep iSH visible and the device unlocked while tasks run because of the separately reported suspension failure below.
+Use `codex --model gpt-6-sol` or `codex --model gpt-6-astra` to choose another model. GPT-6.1-Sol requires the 0.159.3 package and its matching catalog. The 0.159.3 build is in progress; until it is published, this command installs the verified 0.158.0 release. Repeating the same command upgrades the binary and launcher. [Startup verification run 36903764289](https://github.com/leungantoine/codex-ish/actions/runs/36903764289) installed the real release on native ARM64 Linux, found `codex` from a fresh login shell with a minimal initial PATH, completed a real direct shell roundtrip without an explicit sandbox argument in the test, and confirmed a repeated install did not duplicate the PATH line. Physical iSH startup remains a device check. Keep iSH visible and the device unlocked while tasks run because of the separately reported suspension failure below.
 
 ## GPT-6-Luna, Sol, Astra, and GPT-6.1-Sol: install the Codex direct-tool patch
 
@@ -69,7 +69,7 @@ export PATH="$HOME/.local/bin:$PATH"
 codex --version
 ```
 
-This updates only the launcher and requires an installed executable. The compiled Release binaries and their checksums remain unchanged. The code-mode host is still packaged, but the launcher disables it to avoid the reproduced V8 failure. Direct shell tools remain available. Models requiring code-mode-only tools may reject this configuration. `CODEX_ISH_USE_CODE_MODE_HOST=1` opts into the unsupported host for investigation; invoking the installed binary directly also bypasses the launcher defaults.
+This is an advanced repair for the base launcher and requires an installed executable. If you used the one-command setup, repeat that setup afterward to restore plain `codex` with its direct-tool and access defaults. The compiled Release binaries and their checksums remain unchanged. The code-mode host is still packaged, but the launcher disables it to avoid the reproduced V8 failure. Direct shell tools remain available. Models requiring code-mode-only tools may reject this configuration. `CODEX_ISH_USE_CODE_MODE_HOST=1` opts into the unsupported host for investigation; invoking the installed binary directly also bypasses the launcher defaults.
 
 You can also download the two Release assets yourself, run `sha256sum -c codex-ish-aarch64.tar.gz.sha256`, and extract the archive into `~/.local/opt/codex-ish`. Keep `codex-code-mode-host` and `codex-responses-api-proxy` beside `codex`; do not copy only the CLI executable.
 
@@ -169,6 +169,8 @@ If further isolation is needed, the previous diagnostic comparison also disables
 **Verification limit:** QEMU runs ordinary Linux syscalls, not iSH-AOK's implementation. CI cannot prove that login or child shell commands work on your iPad. The user's successful `printf` device test covers the documented direct-tool configuration; code-mode hosting, daemon mode, other models, and broader workloads remain unverified or unsupported. A failure there should be reported with the diagnostic probe output, iSH-AOK version, and `codex --version`.
 
 ## Rebuild and update the pinned Codex release
+
+The generated [Bazel lock update](metadata/README.md) was refreshed successfully and is retained as a patch with this kit. Apply it to the prepared upstream root when reproducing the source changes.
 
 1. Inspect the latest stable `rust-v…` tag in `openai/codex`, especially `utils/pty/src/process_group.rs`, Tokio's selected version, its Unix reaper, the CLI binary list, and upstream release packaging. Check whether either compatibility fix has landed upstream. Do not reapply the old code blindly.
 2. Start from that exact upstream tag and commit. Reapply only the compatibility changes still necessary. If Tokio has changed, vendor the matching locked version and update its pidfd fallback; update `Cargo.toml` and `Cargo.lock` together. If upstream provides a correct fallback, remove the local vendor override.
