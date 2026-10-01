@@ -94,7 +94,8 @@ with open(f"{label}-stderr.log", "wb") as errors:
                                          "request": {"cell_id": yielded["cell_id"],
                                                      "yield_time_ms": 1000}})
             result = next(iter(waited["outcome"].values()))
-        assert "Completed" in result, result
+        assert "Result" in result, result
+        assert result["Result"]["error_text"] is None, result
         assert "ish-code-mode-ok" in json.dumps(result), result
         print(f"PASS: {label}: actual V8 JavaScript output", flush=True)
         closed = request(20, {"method": "session/shutdown", "sessionId": session})
