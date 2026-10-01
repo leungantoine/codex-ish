@@ -6,6 +6,24 @@ This repository builds **OpenAI's real Codex CLI** for the ARM64 Alpine guest in
 
 **Build status:** real binaries were compiled successfully in [build run 36677875179](https://github.com/leungantoine/codex-ish/actions/runs/36677875179). The license-complete [Release `ish-v0.158.0-3.1`](https://github.com/leungantoine/codex-ish/releases/tag/ish-v0.158.0-3.1) passed [final verification](https://github.com/leungantoine/codex-ish/actions/runs/36732272923). Download the [latest Release](https://github.com/leungantoine/codex-ish/releases/latest), containing `codex-ish-aarch64.tar.gz` and `codex-ish-aarch64.tar.gz.sha256`. The user subsequently demonstrated an interactive model response and successful local shell execution with the compatibility settings below.
 
+## Install or upgrade with one command (recommended)
+
+Use the **ARM64 Alpine** root in iSH-AOK. Paste this single command:
+
+```sh
+apk add --no-cache ca-certificates curl tar coreutils git bash && curl -fsSL --retry 3 https://raw.githubusercontent.com/leungantoine/codex-ish/main/setup.sh -o /tmp/setup-codex-ish.sh && sh /tmp/setup-codex-ish.sh && export PATH="$HOME/.local/bin:$PATH"
+```
+
+Then launch with:
+
+```sh
+codex
+```
+
+The setup downloads the latest published release, verifies archive and internal checksums, installs its executables and matching direct-tool catalog, and saves PATH setup in shell profiles. After reopening iSH you can type `codex` immediately. It defaults to GPT-6-Luna, medium reasoning, direct tools, daemon disabled, and **unsandboxed guest access with approval on request**. Commands can access guest files and network. Authentication and existing configuration are retained; if you are not signed in, run `codex login --device-auth` once. Nothing automatically launches when iSH opens.
+
+Use `codex --model gpt-6-sol` or `codex --model gpt-6-astra` to choose another model. GPT-6.1-Sol requires the 0.159.3 package and its matching catalog. The 0.159.3 build is in progress; until it is published, this command installs the verified 0.158.0 release. Repeating the same command upgrades the binary and launcher. Keep iSH visible and the device unlocked while tasks run because of the separately reported suspension failure below.
+
 ## GPT-6-Luna, Sol, Astra, and GPT-6.1-Sol: install the Codex direct-tool patch
 
 The [compatibility patch](compat/README.md) uses Codex's existing direct shell tools and bypasses the failing local V8 code-mode runtime. It works with the current released binary and does **not** require an iSH-AOK app update. Install the normal Codex release first, then:
@@ -124,7 +142,7 @@ Changing iSH's `pt_set_flags` to use its existing `mem_lazy_populate` helper all
 
 ### Diagnose the reported device crash
 
-**Recent physical-device report (2026-10-01):** one MetricKit report records `Namespace RUNNINGBOARD, Code 0xdead10cc`, signal 9, for iSH-AOK build 556 on hardware `iPad14,6`. [Apple documents this code](https://developer.apple.com/documentation/xcode/sigkill) as termination for a file or SQLite database lock held during suspension. The other five supplied exports contain CPU exception diagnostics with no recorded crash diagnostic. They do not establish memory-pressure kills. The user was running Codex on a task but could not identify the operation at closure.
+**Recent physical-device report (2026-10-01):** one MetricKit report records `Namespace RUNNINGBOARD, Code 0xdead10cc`, signal 9, for iSH-AOK build 556 on hardware `iPad14,6`. [Apple documents this code](https://developer.apple.com/documentation/xcode/sigkill) as termination for a file or SQLite database lock held during suspension. The other five supplied exports contain CPU exception diagnostics with no recorded crash diagnostic. They do not establish memory-pressure kills. The user was running Codex on a task and confirmed switching apps or locking the device around the crash, but could not identify the guest operation at closure. This is consistent with the reported suspension failure.
 
 The inspected iSH-AOK 556 app uses a host SQLite database for filesystem metadata and has a suspension guard intended to drain those transactions. A remaining app-level suspension race is plausible, but the report lacks symbols and filesystem breadcrumbs needed to identify the specific lock. This failure is distinct from the separately reproduced V8 memory problem. The Codex upgrade is not claimed to fix it. Keep iSH visible and the device unlocked during work as a temporary precaution; this is not a proven fix. After a recurrence, share iSH's Support → Diagnostics export promptly, including launch journal, breadcrumbs and MetricKit diagnostics, and note the time and whether the app was backgrounded. Do not upload authentication files or private task contents to public issues.
 
@@ -160,7 +178,7 @@ If further isolation is needed, the previous diagnostic comparison also disables
 
 The build uses one Cargo job, release LTO off, debug information 0, optimization level 2 and 16 codegen units, with codegen units 1 for `zbus` and `codex-model-provider`. `-C link-self-contained=no` lets Zig supply musl startup objects, avoiding duplicate `_start` symbols from Rust’s bundled objects. CI first tests this linker setup with a tiny static ARM64 program. OpenSSL settings loaded from `GITHUB_ENV` are exported using `set -a` while sourcing them. Hosted runners remove unused SDKs and allocate swap only when sufficient disk remains; retain both memory and disk headroom when changing the profile.
 
-The source overlay can be reproduced on an Ubuntu 24.04 builder with Rust 1.95.0, its ARM64 musl target, Zig 0.14.0, Perl, make, CMake, pkg-config, and Clang: clone the pinned Codex tag into `upstream`, run `python3 scripts/prepare-ish-source.py upstream`, copy `build-tools/`, `scripts/build-ish-aarch64.sh`, `scripts/codex-gpt6`, and `tests/ish-syscall-probe.c` into the corresponding upstream paths (creating `upstream/tests`), copy this README to `upstream/README-ish.md`, then run `upstream/scripts/build-ish-aarch64.sh`. See the workflow for the exact commands and native verification dependencies. This is a maintenance path for builders; **the iPad installation uses the finished Release binary**.
+The source overlay can be reproduced on an Ubuntu 24.04 builder with Rust 1.95.0, its ARM64 musl target, Zig 0.14.0, Perl, make, CMake, pkg-config, and Clang: clone the pinned Codex tag into `upstream`, run `python3 scripts/prepare-ish-source.py upstream`, copy `build-tools/`, `scripts/build-ish-aarch64.sh`, `scripts/codex-gpt6`, and `tests/ish-syscall-probe.c` into the corresponding upstream paths (creating `upstream/tests`), copy this README to `upstream/README-ish.md`, run `cargo metadata --manifest-path upstream/codex-rs/Cargo.toml --format-version 1 > /dev/null` to resolve the release workspace version bump, then run `upstream/scripts/build-ish-aarch64.sh`. See the workflow for the exact commands and native verification dependencies. This is a maintenance path for builders; **the iPad installation uses the finished Release binary**.
 
 ### Common failures
 

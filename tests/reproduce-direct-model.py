@@ -114,6 +114,10 @@ overrides = ["--no-daemon", "--disable", "code_mode_host", "--disable", "code_mo
 if "/.local/bin/" in command[-1] and command[-1].rsplit("/", 1)[-1] in ("codex-gpt6", "codex"):
     # Exercise the installed launcher's own runtime flags and catalog path.
     overrides = overrides[9:]
+if label.startswith("setup-"):
+    # Verify the startup launcher's sandbox default rather than supplying it here.
+    index = overrides.index("--sandbox")
+    del overrides[index:index + 2]
 env = os.environ.copy()
 env.pop("OPENAI_API_KEY", None)
 env.pop("CODEX_API_KEY", None)

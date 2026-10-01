@@ -23,7 +23,9 @@ sh "$work/install-direct-tools.sh"
 launcher="$HOME/.local/bin/.codex-startup-$$"
 cat > "$launcher" <<'LAUNCHER'
 #!/bin/sh
-exec "$HOME/.local/bin/codex-gpt6" "$@"
+exec "$HOME/.local/bin/codex-gpt6" \
+  -c 'sandbox_mode="danger-full-access"' \
+  -c 'approval_policy="on-request"' "$@"
 LAUNCHER
 chmod 0755 "$launcher"
 mv -f "$launcher" "$HOME/.local/bin/codex"
@@ -37,5 +39,6 @@ for profile in .profile .bashrc .zshrc .bash_profile .bash_login; do
   fi
 done
 echo 'Installed. In a new iSH session, run: codex'
+echo 'Codex commands can access guest files and network; approval policy is on-request.'
 echo 'For this session: export PATH="$HOME/.local/bin:$PATH"'
 echo 'If you are not signed in yet, run: codex login --device-auth'
