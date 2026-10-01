@@ -96,6 +96,14 @@ CI checks that each executable, including bundled `rg` and the diagnostic probe,
 
 These native harness tests exercise the patched source on Linux. They do not exercise the static ARM64 binary under iSH’s syscall implementation.
 
+### GPT-6 code-mode investigation: emulator fix verified
+
+The pinned catalog requires code mode for GPT-6-Luna and the other GPT-6/GPT-5.6 models. [Investigation and patch](experimental/README.md) identify a memory-management problem in iSH-AOK build 556: a 256 KiB V8 protection request materializes page-table entries for a roughly 1.3 TiB reservation. The unmodified emulator exceeds a 2 GiB memory limit and is killed. OpenSSL probe suppression and V8 JIT-less mode do not prevent it.
+
+Changing iSH's `pt_set_flags` to use its existing `mem_lazy_populate` helper allowed the **unchanged released Codex code-mode host** to execute JavaScript, await a real IPC tool callback, return the callback's random nonce, shut down, and exit zero at **63 MiB maximum RSS**. Actual Codex pipe and PTY shell tests also passed after that emulator change. See [verification run 36813443833](https://github.com/leungantoine/codex-ish/actions/runs/36813443833) and the [candidate iSH patch](experimental/ish-aok-556-partial-mprotect.patch).
+
+**This needs an updated iSH-AOK iOS app, not another installation of the current Codex archive.** No updated iOS app has been built or installed here, and authenticated GPT-6 tool execution on the device remains unverified. The candidate requires app-level review and regression testing; the finite lazy-reservation table can still force a large materialization if split slots run out. Keep using the documented GPT-5.5 configuration until an updated app passes device tests. The stable release and installer defaults remain unchanged.
+
 ### Diagnose the reported device crash
 
 A subsequent device test reached the interactive UI and received a model response, but `gpt-6-luna` refused the shell call because the code-mode host was disabled. Its displayed `ish-shell-ok` was **predicted output, not an executed command**. The pinned upstream catalog marks the GPT-6 and GPT-5.6 models as `code_mode_only`, which overrides feature flags. It marks `gpt-5.5` with no required code-mode override. Start a **new session with `--model gpt-5.5 --disable code_mode --disable code_mode_only`** for the direct-shell device test; do not resume the failing GPT-6 session. The follow-up device screenshot showed successful shell execution with GPT-5.5 at medium reasoning, real output `ish-shell-ok`, and exit status `0`. The first attempt failed because the previous `max` reasoning level was unsupported; selecting medium resolved that request error.
