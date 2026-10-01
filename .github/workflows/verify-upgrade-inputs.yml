@@ -1,0 +1,39 @@
+name: Verify upgraded source dependency metadata
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - .github/workflows/verify-upgrade-inputs.yml
+permissions:
+  contents: read
+jobs:
+  metadata:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 35
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare exact upgraded source
+        run: |
+          git clone --depth 1 --branch rust-v0.159.3 https://github.com/openai/codex.git upstream
+          python3 scripts/prepare-ish-source.py upstream
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: '1.95.0'
+      - uses: taiki-e/install-action@v2
+        with:
+          tool: just,bazelisk
+      - name: Refresh upstream Bazel dependency lock
+        working-directory: upstream
+        run: |
+          mkdir -p "$RUNNER_TEMP/ish-bazel-bin"
+          ln -s "$(command -v bazelisk)" "$RUNNER_TEMP/ish-bazel-bin/bazel"
+          export PATH="$RUNNER_TEMP/ish-bazel-bin:$PATH"
+          just bazel-lock-update
+          git diff -- MODULE.bazel.lock > ../bazel-dependency-lock.patch
+          cp MODULE.bazel.lock ../MODULE.bazel.lock
+      - uses: actions/upload-artifact@v4
+        with:
+          name: upgraded-bazel-dependency-metadata
+          path: |
+            bazel-dependency-lock.patch
+            MODULE.bazel.lock
