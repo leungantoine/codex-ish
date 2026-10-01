@@ -19,7 +19,7 @@ marker = "ish-direct-" + os.urandom(8).hex()
 
 
 def tool_specs(body):
-    specs = list(body.get("tools", []))
+    specs = list(body.get("tools") or [])
     for item in body.get("input", []):
         if item.get("type") == "additional_tools":
             specs.extend(item.get("tools", []))
