@@ -12,7 +12,7 @@ export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="${CARGO_TARGET_AARCH64
 export CMAKE_C_COMPILER="$CC" CMAKE_CXX_COMPILER="$CXX"
 export CFLAGS='-pthread -Wno-error=frame-larger-than' CXXFLAGS='-pthread -Wno-error=frame-larger-than'
 export AWS_LC_SYS_NO_JITTER_ENTROPY=1 AWS_LC_SYS_NO_JITTER_ENTROPY_aarch64_unknown_linux_musl=1
-export PKG_CONFIG_ALLOW_CROSS=1 STABLE_GIT_COMMIT="01fc69f4026735edfdf6789820549727a4867b11"
+export PKG_CONFIG_ALLOW_CROSS=1 STABLE_GIT_COMMIT="a956835d020762cb2b570053af06f643a11c0ecc"
 export RUNNER_TEMP="${RUNNER_TEMP:-/tmp}"
 export GITHUB_ENV="$(mktemp)"
 trap 'rm -f "$GITHUB_ENV"' EXIT
@@ -63,7 +63,7 @@ done
 "$CC" -O2 -static tests/ish-syscall-probe.c -o "$package/diagnostics/ish-syscall-probe"
 cp tests/ish-syscall-probe.c "$package/diagnostics/ish-syscall-probe.c"
 cat > "$package/BUILDINFO.txt" <<INFO
-OpenAI Codex rust-v0.159.3
+OpenAI Codex rust-v0.160.0
 Upstream commit: $STABLE_GIT_COMMIT
 Target: $TARGET
 Rust: $(rustc --version)
