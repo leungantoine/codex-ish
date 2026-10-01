@@ -20,14 +20,14 @@ jobs:
           github-token: ${{ github.token }}
       - uses: actions/download-artifact@v4
         with:
-          name: upgraded-subprocess-logs
-          run-id: 36898817843
+          name: recovered-subprocess-logs
+          run-id: 36912369119
           github-token: ${{ github.token }}
           path: previous-logs
       - name: Inspect failed app-server startup
         run: |
           grep -Ei 'error|failed|invalid|sqlite|bwrap|permission' previous-logs/ish-1593-stderr.log | tail -30 || true
-          head -15 previous-logs/ish-1593-stderr.log
+          tail -30 previous-logs/ish-1593-stderr.log
       - name: Build released iSH-AOK emulator
         run: |
           set -euo pipefail
@@ -67,7 +67,10 @@ jobs:
           sh install-direct-tools.sh
           "$HOME/.local/bin/codex-gpt6" --model gpt-6.1-sol --version | grep -Fx 'codex-cli 0.159.3'
           python3 tests/reproduce-direct-model.py linux-launcher "$PWD/package/compat/models-direct.json" gpt-6-luna "$HOME/.local/bin/codex-gpt6"
-          timeout 240 python3 tests/reproduce-ish.py ish-1593 emulator/build/ish -f guest /codex/codex --no-daemon --disable code_mode_host -c 'sandbox_mode="danger-full-access"' app-server --stdio
+          sudo systemd-run --wait --pipe --collect --working-directory="$PWD" -p MemoryMax=2G -p MemorySwapMax=0 -p OOMPolicy=kill timeout 240 python3 tests/reproduce-ish.py ish-1593 emulator/build/ish -f guest /codex/codex --no-daemon --disable code_mode_host -c 'sandbox_mode="danger-full-access"' app-server --stdio
+      - name: Show app-server stderr on failure
+        if: failure()
+        run: tail -35 ish-1593-stderr.log || true
       - uses: actions/upload-artifact@v4
         if: always()
         with:
