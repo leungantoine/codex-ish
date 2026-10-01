@@ -48,7 +48,7 @@ jobs:
           sh install.sh --launcher-only
           "$HOME/.local/bin/codex" --version
           "$HOME/.local/bin/codex" features list | tee features.log
-          grep -E '^code_mode_host[[:space:]].*false
+          grep -E '^code_mode_host[[:space:]].*false$' features.log
           python3 tests/reproduce-ish.py linux "$HOME/.local/bin/codex" app-server
           for mode in fork posix helper; do root/codex/diagnostics/ish-spawn-probe "$mode" "$PWD/package/codex"; done
       - name: Run actual binaries under iSH-AOK guest kernel and JIT
@@ -72,41 +72,6 @@ jobs:
           exit "$status"
       - name: Print failure diagnostics
         if: always()
-        run: |
-          for log in *-stderr.log *-kernel.log; do
-            if test -f "$log"; then tail -100 "$log"; fi
-          done
-      - uses: actions/upload-artifact@v4
-        if: always()
-        with:
-          name: ish-reproduction-logs
-          path: |
-            *-stderr.log
-            *-kernel.log
-          if-no-files-found: ignore
- features.log
-          python3 tests/reproduce-ish.py linux "$HOME/.local/bin/codex" app-server
-          for mode in fork posix helper; do root/codex/diagnostics/ish-spawn-probe "$mode" "$PWD/package/codex"; done
-      - name: Run actual binaries under iSH-AOK guest kernel and JIT
-        run: |
-          set -euo pipefail
-          for mode in fork posix helper; do
-            timeout 180 emulator/build/ish -f guest /codex/diagnostics/ish-spawn-probe "$mode" /codex/codex 555>"$mode-kernel.log" 2> >(tee "$mode-stderr.log" >&2)
-          done
-          timeout 180 emulator/build/ish -f guest /codex/diagnostics/ish-syscall-probe 555>probe-kernel.log 2> >(tee probe-stderr.log >&2)
-          timeout 180 emulator/build/ish -f guest /codex/codex --version 555>version-kernel.log 2> >(tee version-stderr.log >&2)
-          timeout 600 python3 tests/reproduce-ish.py ish emulator/build/ish -f guest /codex/codex app-server
-      - name: Exercise code-mode host and V8 on Linux and iSH
-        if: always()
-        run: |
-          set -uo pipefail
-          status=0
-          /usr/bin/time -v timeout 300 python3 tests/reproduce-code-mode.py linux-code package/codex-code-mode-host || status=1
-          sudo systemd-run --wait --pipe --collect --working-directory="$PWD" -p MemoryMax=2G -p MemorySwapMax=0 -p OOMPolicy=kill /usr/bin/time -v timeout 300 python3 tests/reproduce-code-mode.py ish-code emulator/build/ish -f guest /codex/codex-code-mode-host || status=1
-          sudo systemd-run --wait --pipe --collect --working-directory="$PWD" -p MemoryMax=2G -p MemorySwapMax=0 -p OOMPolicy=kill /usr/bin/time -v timeout 300 python3 tests/reproduce-code-mode.py ish-code-no-probes emulator/build/ish -f guest /usr/bin/env OPENSSL_armcap=0 /codex/codex-code-mode-host || status=1
-          exit "$status"
-      - name: Print failure diagnostics
-        if: failure()
         run: |
           for log in *-stderr.log *-kernel.log; do
             if test -f "$log"; then tail -100 "$log"; fi
