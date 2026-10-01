@@ -2,6 +2,40 @@
 # Install the checked GitHub Release into the current iSH user's home.
 set -eu
 
+write_launcher() {
+  mkdir -p "$HOME/.local/bin"
+  launcher="$HOME/.local/bin/.codex-ish-launcher-$$"
+  cat > "$launcher" <<'SH'
+#!/bin/sh
+# iSH's code-mode host fails during V8 execution. Keep direct shell tools.
+if [ "${CODEX_ISH_USE_CODE_MODE_HOST:-0}" != 1 ]; then
+  set -- --disable code_mode_host "$@"
+fi
+# The shared daemon is unsupported in this iSH build. Use the embedded server.
+if [ "${CODEX_ISH_USE_DAEMON:-0}" = 1 ]; then
+  exec "$HOME/.local/opt/codex-ish/codex" "$@"
+fi
+exec "$HOME/.local/opt/codex-ish/codex" --no-daemon "$@"
+SH
+  chmod 0755 "$launcher"
+  # Rename over the old symlink: writing through it would overwrite the binary.
+  mv -f "$launcher" "$HOME/.local/bin/codex"
+}
+
+if [ "${1:-}" = --launcher-only ] && [ "$#" = 1 ]; then
+  if [ ! -x "$HOME/.local/opt/codex-ish/codex" ]; then
+    echo 'Install Codex first; --launcher-only requires an existing executable.' >&2
+    exit 1
+  fi
+  write_launcher
+  echo 'Updated launcher: --no-daemon and --disable code_mode_host'
+  exit 0
+fi
+if [ "$#" != 0 ]; then
+  echo 'Usage: sh install.sh [--launcher-only]' >&2
+  exit 1
+fi
+
 if [ "$(uname -m)" != aarch64 ]; then
   echo 'This build requires the iSH-AOK ARM64 Alpine root (uname -m: aarch64).' >&2
   exit 1
@@ -41,18 +75,7 @@ if [ -d "$destination" ]; then
 else
   mv "$stage" "$destination"
 fi
-launcher="$HOME/.local/bin/.codex-ish-launcher-$$"
-cat > "$launcher" <<'SH'
-#!/bin/sh
-# The shared daemon is unsupported in this iSH build. Use the embedded server.
-if [ "${CODEX_ISH_USE_DAEMON:-0}" = 1 ]; then
-  exec "$HOME/.local/opt/codex-ish/codex" "$@"
-fi
-exec "$HOME/.local/opt/codex-ish/codex" --no-daemon "$@"
-SH
-chmod 0755 "$launcher"
-# Rename over the old symlink: writing through it would overwrite the binary.
-mv -f "$launcher" "$HOME/.local/bin/codex"
+write_launcher
 ln -sfn "$destination/codex-path/rg" "$HOME/.local/bin/rg"
 echo "Installed $destination/codex"
-echo 'Add ~/.local/bin to PATH and run: codex --version (launcher uses --no-daemon)'
+echo 'Add ~/.local/bin to PATH and run: codex --version (daemon and code-mode host disabled)'
