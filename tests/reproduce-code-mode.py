@@ -64,6 +64,8 @@ with open(f"{label}-stderr.log", "wb") as errors:
                 result = message["result"]
                 if result["status"] != "ok":
                     raise RuntimeError(result)
+                if result["value"].get("type") == "execution/started":
+                    continue
                 return result["value"]
         raise TimeoutError(f"{label}: response {request_id} timed out")
 
