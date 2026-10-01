@@ -2,6 +2,8 @@
 
 This is an emulator-side candidate patch, not an installable Codex update or an iOS app build. It applies to `emkey1/ish-AOK` tag `builds/iSH-AOK_556`, commit `19b129bed782897a94d56e1855497f831cfdd405`.
 
+**Alternative available:** the newer [Codex direct-tool patch](../compat/README.md) bypasses V8 using a terminal-installable model-catalog override. The emulator patch below is only needed to run V8 locally; it is not required to try GPT-6 with direct tools.
+
 ## Reproduction and cause
 
 Use `.github/workflows/reproduce-ish.yml`. It checks the existing release archive and all internal executable checksums, builds the pinned ARM64 guest emulator on native ARM64 Linux, and speaks the actual code-mode host's framed IPC protocol. No model authentication is needed. Experimental services have a 2 GiB cgroup memory limit and no swap so a failed case cannot exhaust the runner.
@@ -26,4 +28,4 @@ This establishes the emulator failure mechanism and a working candidate for the 
 
 The patch must be integrated, reviewed, and tested in an iSH-AOK iOS app build. Reinstalling the current Codex archive cannot change iSH's kernel. The helper can still fall back to materializing a whole reservation when lazy split slots are exhausted; this patch is not a complete guarantee for all memory layouts. Allocation-error propagation, invalid ranges, protections, fork/COW, repeated sessions, iOS 16 KiB host pages, and memory limits deserve app-level regression coverage before a general release.
 
-Until an updated iOS app passes real model and shell tests, retain the documented GPT-5.5 direct-tool configuration with daemon and code-mode hosting disabled. Current stable Codex binaries and the latest release are unchanged.
+For the device-tested path, retain the documented GPT-5.5 direct-tool configuration. The separate GPT-6 direct-tool patch has passed mock-backend tool roundtrips under unmodified iSH and still needs authenticated device testing. Current stable Codex binaries and the latest release are unchanged.
