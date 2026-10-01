@@ -28,6 +28,7 @@ jobs:
           python3 scripts/prepare-ish-source.py upstream
           cp -a build-tools upstream/
           cp scripts/build-ish-aarch64.sh scripts/codex-gpt6 upstream/scripts/
+          mkdir -p upstream/tests
           cp tests/ish-syscall-probe.c upstream/tests/
           cp README.md upstream/README-ish.md
           chmod +x upstream/build-tools/* upstream/scripts/build-ish-aarch64.sh
