@@ -8,7 +8,7 @@ replacement evaluator.
 
 ## Recommended installation and upgrade
 
-Use the one-command [setup in the main README](../README.md#install-or-upgrade-with-one-command-recommended), then run `codex`. Setup saves PATH for future iSH sessions and configures plain `codex` with GPT-6-Luna, medium reasoning, direct tools, the daemon disabled, and unsandboxed guest access with approval on request. Guest files and network are accessible. Keep iSH visible during tasks because the reported iOS suspension lock failure is not claimed fixed.
+Use the one-command [setup in the main README](../README.md#installation), then run `codex`. Setup saves PATH for future iSH sessions and configures plain `codex` with GPT-6-Luna, medium reasoning, direct tools, the daemon disabled, and unsandboxed guest access with approval on request. Guest files and network are accessible. Keep iSH visible during tasks because the reported iOS suspension lock failure is not claimed fixed.
 
 Codex 0.160.0 is the current package, pinned to OpenAI commit `a956835d020762cb2b570053af06f643a11c0ecc`. It bundles the matching direct-tool catalog for the GPT-6, GPT-6.1, and GPT-5.6 models. Source pin, original Tokio checksum, and input hashes are in the archive's `compat/PATCHINFO.json`. Use `codex --model gpt-6.1-sol` to select GPT-6.1-Sol. The helper installation recognizes the bundled catalog and does not download the old fallback catalog.
 
