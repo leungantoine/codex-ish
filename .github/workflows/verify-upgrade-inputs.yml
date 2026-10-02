@@ -4,6 +4,8 @@ on:
   push:
     paths:
       - .github/workflows/verify-upgrade-inputs.yml
+      - codex-upstream.json
+      - scripts/prepare-ish-source.py
 permissions:
   contents: read
 jobs:
@@ -14,7 +16,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Prepare exact upgraded source
         run: |
-          git clone --depth 1 --branch rust-v0.159.3 https://github.com/openai/codex.git upstream
+          upstream_tag="$(python3 -c 'import json; print(json.load(open("codex-upstream.json"))["upstream_tag"])')"
+          git clone --depth 1 --branch "$upstream_tag" https://github.com/openai/codex.git upstream
           python3 scripts/prepare-ish-source.py upstream
       - uses: dtolnay/rust-toolchain@stable
         with:

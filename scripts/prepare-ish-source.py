@@ -12,20 +12,25 @@ import urllib.request
 
 kit = Path(__file__).resolve().parents[1]
 root = Path(sys.argv[1]).resolve()
-assert subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip() == "a956835d020762cb2b570053af06f643a11c0ecc"
+pin = json.loads((kit / "codex-upstream.json").read_text())
+upstream_commit = pin["upstream_commit"]
+upstream_tag = pin["upstream_tag"]
+tokio_version = pin["tokio_version"]
+assert upstream_tag == f"rust-v{pin['upstream_version']}"
+assert subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip() == upstream_commit
 subprocess.run(["git", "apply", str(kit / "patches/process-group.patch")], cwd=root, check=True)
 
 lock_path = root / "codex-rs/Cargo.lock"
 lock_text = lock_path.read_text()
 tokio = next(p for p in tomllib.loads(lock_text)["package"] if p["name"] == "tokio")
-assert tokio["version"] == "1.52.3"
-data = urllib.request.urlopen("https://static.crates.io/crates/tokio/tokio-1.52.3.crate", timeout=60).read()
+assert tokio["version"] == tokio_version
+data = urllib.request.urlopen(f"https://static.crates.io/crates/tokio/tokio-{tokio_version}.crate", timeout=60).read()
 assert hashlib.sha256(data).hexdigest() == tokio["checksum"]
 vendor = root / "codex-rs/vendor"
 vendor.mkdir(exist_ok=True)
 with tarfile.open(fileobj=io.BytesIO(data)) as archive:
     archive.extractall(vendor, filter="data")
-pidfd = vendor / "tokio-1.52.3/src/process/unix/pidfd_reaper.rs"
+pidfd = vendor / f"tokio-{tokio_version}/src/process/unix/pidfd_reaper.rs"
 s = pidfd.read_text()
 old = """        } else {
             // Safety: pidfd_open returns -1 on error or a valid fd with ownership."""
@@ -54,7 +59,7 @@ pidfd.write_text(s.replace(old, new))
 manifest = root / "codex-rs/Cargo.toml"
 s = manifest.read_text()
 assert s.count("[patch.crates-io]") == 1
-s = s.replace("[patch.crates-io]", '[patch.crates-io]\ntokio = { path = "vendor/tokio-1.52.3" }')
+s = s.replace("[patch.crates-io]", f'[patch.crates-io]\ntokio = {{ path = "vendor/tokio-{tokio_version}" }}')
 s += "\n[profile.release.package.zbus]\ncodegen-units = 1\n\n[profile.release.package.codex-model-provider]\ncodegen-units = 1\n"
 manifest.write_text(s)
 blocks = lock_text.split("[[package]]")
@@ -74,8 +79,8 @@ compat = root / "ish-compat"
 compat.mkdir()
 (compat / "models-direct.json").write_text(json.dumps(catalog, ensure_ascii=False, indent=2) + "\n")
 (compat / "PATCHINFO.json").write_text(json.dumps({
-    "upstream_commit": "a956835d020762cb2b570053af06f643a11c0ecc",
-    "upstream_tag": "rust-v0.160.0",
+    "upstream_commit": upstream_commit,
+    "upstream_tag": upstream_tag,
     "tokio_registry_sha256": tokio["checksum"],
     "direct_tool_models": changed,
     "patched_source_sha256": {
