@@ -2,5 +2,6 @@
   "upstream_tag": "rust-v0.160.0",
   "upstream_version": "0.160.0",
   "upstream_commit": "a956835d020762cb2b570053af06f643a11c0ecc",
-  "tokio_version": "1.52.3"
+  "tokio_version": "1.52.3",
+  "libc_version": "0.2.186"
 }

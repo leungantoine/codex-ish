@@ -4,13 +4,19 @@ repo_root="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 mkdir -p "$work/inputs" "$work/harness/src"
+tokio_version="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["tokio_version"])' "$repo_root/codex-upstream.json")"
+libc_version="$(python3 -c 'import json,sys; print(json.load(open(sys.argv[1]))["libc_version"])' "$repo_root/codex-upstream.json")"
 if [[ -n "${ISH_PATCHED_SOURCE:-}" ]]; then
   mkdir -p "$work/inputs/codex-rs/vendor"
-  cp -a "$ISH_PATCHED_SOURCE/codex-rs/vendor/tokio-1.52.3" "$work/inputs/codex-rs/vendor/"
+  cp -a "$ISH_PATCHED_SOURCE/codex-rs/vendor/tokio-$tokio_version" "$work/inputs/codex-rs/vendor/"
   mkdir -p "$work/inputs/codex-rs/utils/pty/src"
   cp "$ISH_PATCHED_SOURCE/codex-rs/utils/pty/src/process_group.rs" "$work/inputs/codex-rs/utils/pty/src/"
 else
   tar -xzf "$repo_root/ish-overlay.tar.gz" -C "$work/inputs"
+  if [[ ! -d "$work/inputs/codex-rs/vendor/tokio-$tokio_version" ]]; then
+    echo "ish-overlay.tar.gz is historical and does not match Tokio $tokio_version; set ISH_PATCHED_SOURCE to a prepared upstream checkout." >&2
+    exit 1
+  fi
 fi
 cp "$work/inputs/codex-rs/utils/pty/src/process_group.rs" "$work/harness/src/process_group.rs"
 cat > "$work/harness/Cargo.toml" <<EOF
@@ -19,8 +25,8 @@ name = "ish-subprocess-verification"
 version = "0.1.0"
 edition = "2024"
 [dependencies]
-libc = "=0.2.186"
-tokio = { path = "$work/inputs/codex-rs/vendor/tokio-1.52.3", features = ["process", "rt-multi-thread", "macros", "time"] }
+libc = "=$libc_version"
+tokio = { path = "$work/inputs/codex-rs/vendor/tokio-$tokio_version", features = ["process", "rt-multi-thread", "macros", "time"] }
 EOF
 cat > "$work/harness/src/main.rs" <<'RS'
 #[allow(dead_code)]

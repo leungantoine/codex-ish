@@ -1,0 +1,100 @@
+name: Refresh docs in latest verified release
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths:
+      - README.md
+      - compat/README.md
+      - setup.sh
+
+permissions:
+  contents: read
+
+concurrency:
+  group: codex-ish-release
+  cancel-in-progress: false
+
+jobs:
+  source:
+    runs-on: ubuntu-24.04
+    outputs:
+      ready: ${{ steps.gate.outputs.ready }}
+      source_tag: ${{ steps.gate.outputs.source_tag }}
+      upstream_version: ${{ steps.gate.outputs.upstream_version }}
+      upstream_commit: ${{ steps.gate.outputs.upstream_commit }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Confirm latest release matches the pinned source
+        id: gate
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          upstream_version="$(python3 -c 'import json; print(json.load(open("codex-upstream.json"))["upstream_version"])')"
+          upstream_commit="$(python3 -c 'import json; print(json.load(open("codex-upstream.json"))["upstream_commit"])')"
+          source_tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || true)"
+          release_notes="$(gh release view --repo "$GITHUB_REPOSITORY" --json body --jq .body 2>/dev/null || true)"
+          echo "upstream_version=$upstream_version" >> "$GITHUB_OUTPUT"
+          echo "upstream_commit=$upstream_commit" >> "$GITHUB_OUTPUT"
+          echo "source_tag=$source_tag" >> "$GITHUB_OUTPUT"
+          if [[ "$source_tag" == "ish-v${upstream_version}-"* ]] && grep -Fq "commit ${upstream_commit}" <<< "$release_notes"; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Latest release does not match the pin. The next verified source build will include these docs."
+          fi
+
+  package:
+    needs: source
+    if: github.ref == 'refs/heads/main' && needs.source.outputs.ready == 'true'
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify current package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_TAG: ${{ needs.source.outputs.source_tag }}
+          UPSTREAM_VERSION: ${{ needs.source.outputs.upstream_version }}
+          UPSTREAM_COMMIT: ${{ needs.source.outputs.upstream_commit }}
+        run: |
+          set -euo pipefail
+          gh release download "$SOURCE_TAG" --repo "$GITHUB_REPOSITORY" --pattern 'codex-ish-aarch64.tar.gz*'
+          sha256sum -c codex-ish-aarch64.tar.gz.sha256
+          mkdir package
+          tar -xzf codex-ish-aarch64.tar.gz -C package
+          (cd package && sha256sum -c SHA256SUMS)
+          package/codex --version | grep -Fx "codex-cli $UPSTREAM_VERSION"
+          grep -F "Upstream commit: $UPSTREAM_COMMIT" package/BUILDINFO.txt
+          (cd package && sha256sum codex codex-code-mode-host codex-responses-api-proxy codex-path/rg diagnostics/ish-syscall-probe > "$RUNNER_TEMP/executables.before")
+
+      - name: Update docs and prove executable hashes are unchanged
+        run: |
+          set -euo pipefail
+          mkdir -p package/compat
+          cp README.md package/README.md
+          cp compat/README.md package/compat/README.md
+          cp setup.sh package/setup.sh
+          (cd package && sha256sum -c "$RUNNER_TEMP/executables.before")
+          (cd package && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
+          (cd package && sha256sum -c SHA256SUMS)
+          mkdir -p dist
+          tar -C package -czf dist/codex-ish-aarch64.tar.gz .
+          (cd dist && sha256sum codex-ish-aarch64.tar.gz > codex-ish-aarch64.tar.gz.sha256)
+          (cd dist && sha256sum -c codex-ish-aarch64.tar.gz.sha256)
+
+      - name: Publish docs-only release with unchanged executables
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_TAG: ${{ needs.source.outputs.source_tag }}
+          UPSTREAM_VERSION: ${{ needs.source.outputs.upstream_version }}
+          UPSTREAM_COMMIT: ${{ needs.source.outputs.upstream_commit }}
+        run: |
+          set -euo pipefail
+          tag="${SOURCE_TAG}.docs-${GITHUB_RUN_NUMBER}"
+          gh release create "$tag" dist/codex-ish-aarch64.tar.gz dist/codex-ish-aarch64.tar.gz.sha256 \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest \
+            --title "Codex ${UPSTREAM_VERSION} for iSH-AOK (docs update ${GITHUB_RUN_NUMBER})" \
+            --notes "Documentation refresh for OpenAI Codex commit ${UPSTREAM_COMMIT}. The five verified executable hashes are unchanged from ${SOURCE_TAG}; only README and setup documentation were refreshed."

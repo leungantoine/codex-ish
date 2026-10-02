@@ -54,14 +54,33 @@ done
 release_base=${CODEX_ISH_RELEASE_BASE:-https://github.com/leungantoine/codex-ish/releases/latest/download}
 archive=codex-ish-aarch64.tar.gz
 work=$(mktemp -d)
-trap 'rm -rf "$work"' EXIT HUP INT TERM
+destination="$HOME/.local/opt/codex-ish"
+stage=
+backup=
+cleanup() {
+  status=$?
+  trap - EXIT HUP INT TERM
+  rm -rf "$work"
+  if [ -n "$stage" ] && [ -d "$stage" ]; then rm -rf "$stage"; fi
+  if [ -n "$backup" ] && [ -d "$backup" ]; then
+    if [ ! -e "$destination" ]; then
+      mv "$backup" "$destination" || echo "Could not restore previous installation from $backup" >&2
+    else
+      rm -rf "$backup"
+    fi
+  fi
+  exit "$status"
+}
+trap cleanup EXIT
+trap 'exit 129' HUP
+trap 'exit 130' INT
+trap 'exit 143' TERM
 curl -fL --retry 3 "$release_base/$archive" -o "$work/$archive"
 curl -fL --retry 3 "$release_base/$archive.sha256" -o "$work/$archive.sha256"
 (cd "$work" && sha256sum -c "$archive.sha256")
 
 mkdir -p "$HOME/.local/opt" "$HOME/.local/bin"
-destination="$HOME/.local/opt/codex-ish"
-stage="$HOME/.local/opt/.codex-ish-new-$$"
+stage="$HOME/.local/opt/.codex-ish-new-$"
 mkdir "$stage"
 tar -xzf "$work/$archive" -C "$stage"
 for name in codex codex-code-mode-host codex-responses-api-proxy codex-path/rg; do
@@ -72,12 +91,20 @@ for name in codex codex-code-mode-host codex-responses-api-proxy codex-path/rg; 
 done
 (cd "$stage" && sha256sum -c SHA256SUMS)
 if [ -d "$destination" ]; then
-  backup="$HOME/.local/opt/.codex-ish-old-$$"
+  backup="$HOME/.local/opt/.codex-ish-old-$"
   mv "$destination" "$backup"
-  mv "$stage" "$destination"
+  if ! mv "$stage" "$destination"; then
+    mv "$backup" "$destination"
+    backup=
+    echo 'Could not install the new package; restored the previous installation.' >&2
+    exit 1
+  fi
+  stage=
   rm -rf "$backup"
+  backup=
 else
   mv "$stage" "$destination"
+  stage=
 fi
 write_launcher
 ln -sfn "$destination/codex-path/rg" "$HOME/.local/bin/rg"

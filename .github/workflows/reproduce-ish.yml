@@ -1,11 +1,7 @@
-name: Reproduce shell execution in iSH-AOK
+name: Historical iSH-AOK shell and V8 investigation
 on:
   workflow_dispatch:
-  push:
-    paths:
-      - .github/workflows/reproduce-ish.yml
-      - tests/reproduce-ish.py
-      - tests/reproduce-code-mode.py
+# Manual, pinned reproduction for the 0.158.0 emulator investigation.
 permissions:
   contents: read
 jobs:
@@ -20,6 +16,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y meson ninja-build clang llvm libarchive-dev libsqlite3-dev zlib1g-dev musl-tools
           git clone --depth 1 --branch builds/iSH-AOK_556 https://github.com/emkey1/ish-AOK.git emulator
+          test "$(git -C emulator rev-parse HEAD)" = 19b129bed782897a94d56e1855497f831cfdd405
           git -C emulator submodule update --init --depth 1 deps/smallclue
           CC=clang meson setup emulator/build emulator --buildtype=debugoptimized -Dguest_archs=arm64 -Dnative_rust=disabled -Dnative_zsh=disabled -Dnative_dash=disabled -Dnative_bash=disabled -Dlog=strace
           ninja -C emulator/build -j 2 ish tools/fakefsify

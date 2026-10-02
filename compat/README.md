@@ -14,7 +14,7 @@ Codex 0.160.0 is the current package, pinned to OpenAI commit `a956835d020762cb2
 
 The user confirmed that the earlier GPT-6 direct-tool setup works on their device. That report does not establish every model or task, and physical-device testing of this release is still required.
 
-The 0.158.0 instructions and recorded checks below describe the historical fallback retained for that older binary.
+The historical fallback instructions and recorded checks below describe the older 0.158.0 binary. The current 0.160.0 package bundles its own catalog and launcher.
 
 ## Historical 0.158.0 fallback installation
 
@@ -56,7 +56,7 @@ session rather than resuming the prior code-mode-only conversation. Keep the
 app open while testing. Guest commands can access Alpine files and the network;
 iSH lacks Codex's normal Linux sandbox.
 
-## What changes
+## What changed in the historical 0.158.0 fallback
 
 `models-direct.json` is copied from OpenAI source commit
 `064c6b8c737f5b41d171fdda80bd9ef10ad06eb3`,

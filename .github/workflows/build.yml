@@ -3,31 +3,52 @@ name: Build Codex for iSH-AOK
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     paths:
-      - .github/workflows/build.yml
       - codex-upstream.json
-      - README.md
-      - scripts/**
+      - scripts/prepare-ish-source.py
+      - scripts/build-ish-aarch64.sh
       - build-tools/**
       - patches/**
-      - tests/**
-      - install.sh
-  pull_request:
-    paths:
-      - .github/workflows/build.yml
-      - codex-upstream.json
-      - README.md
-      - scripts/**
-      - build-tools/**
-      - patches/**
-      - tests/**
-      - install.sh
+      - tests/ish-syscall-probe.c
 
 permissions:
   contents: read
 
+concurrency:
+  group: codex-ish-release
+  cancel-in-progress: false
+
 jobs:
+  release-status:
+    runs-on: ubuntu-24.04
+    outputs:
+      should_build: ${{ steps.status.outputs.should_build }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skip work already covered by the latest release
+        id: status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          upstream_version="$(python3 -c 'import json; print(json.load(open("codex-upstream.json"))["upstream_version"])')"
+          upstream_commit="$(python3 -c 'import json; print(json.load(open("codex-upstream.json"))["upstream_commit"])')"
+          latest_tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || true)"
+          latest_notes="$(gh release view --repo "$GITHUB_REPOSITORY" --json body --jq .body 2>/dev/null || true)"
+          if [[ "$latest_tag" == "ish-v${upstream_version}-"* ]] && grep -Fq "commit ${upstream_commit}" <<< "$latest_notes"; then
+            echo "Latest release already contains upstream ${upstream_version} (${upstream_commit}); skipping full rebuild."
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: release-status
+    if: github.event_name == 'workflow_dispatch' || needs.release-status.outputs.should_build == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     steps:
@@ -45,6 +66,9 @@ jobs:
           mkdir -p upstream/tests
           cp tests/ish-syscall-probe.c upstream/tests/
           cp README.md upstream/README-ish.md
+          mkdir -p upstream/ish-docs/compat
+          cp compat/README.md upstream/ish-docs/compat/README.md
+          cp setup.sh upstream/ish-docs/setup.sh
           chmod +x upstream/build-tools/* upstream/scripts/build-ish-aarch64.sh
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -160,7 +184,8 @@ jobs:
           key: ish-${{ hashFiles('codex-upstream.json') }}-rust195-zig014-${{ github.run_id }}-${{ github.run_attempt }}
 
   verify:
-    needs: build
+    needs: [release-status, build]
+    if: github.event_name == 'workflow_dispatch' || needs.release-status.outputs.should_build == 'true'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 40
     steps:
@@ -174,6 +199,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y meson ninja-build clang llvm libarchive-dev libsqlite3-dev zlib1g-dev musl-tools
           git clone --depth 1 --branch builds/iSH-AOK_556 https://github.com/emkey1/ish-AOK.git emulator
+          test "$(git -C emulator rev-parse HEAD)" = 19b129bed782897a94d56e1855497f831cfdd405
           git -C emulator submodule update --init --depth 1 deps/smallclue
           CC=clang meson setup emulator/build emulator --buildtype=debugoptimized -Dguest_archs=arm64 -Dnative_rust=disabled -Dnative_zsh=disabled -Dnative_dash=disabled -Dnative_bash=disabled -Dlog=strace
           ninja -C emulator/build -j 2 ish tools/fakefsify
@@ -220,8 +246,8 @@ jobs:
           path: '*-stderr.log'
 
   publish:
-    needs: [build, verify]
-    if: github.ref == 'refs/heads/main'
+    needs: [release-status, build, verify]
+    if: github.ref == 'refs/heads/main' && needs.release-status.outputs.should_build == 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
