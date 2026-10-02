@@ -6,6 +6,11 @@ on:
       - .github/workflows/verify-upgrade-inputs.yml
       - codex-upstream.json
       - scripts/prepare-ish-source.py
+  pull_request:
+    paths:
+      - .github/workflows/verify-upgrade-inputs.yml
+      - codex-upstream.json
+      - scripts/prepare-ish-source.py
 permissions:
   contents: read
 jobs:

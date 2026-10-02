@@ -12,6 +12,16 @@ on:
       - patches/**
       - tests/**
       - install.sh
+  pull_request:
+    paths:
+      - .github/workflows/build.yml
+      - codex-upstream.json
+      - README.md
+      - scripts/**
+      - build-tools/**
+      - patches/**
+      - tests/**
+      - install.sh
 
 permissions:
   contents: read
