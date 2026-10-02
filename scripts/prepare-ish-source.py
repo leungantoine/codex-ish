@@ -72,7 +72,7 @@ catalog = json.loads((root / "codex-rs/models-manager/models.json").read_text())
 changed = []
 for model in catalog["models"]:
     if model["slug"].startswith(("gpt-6-", "gpt-6.", "gpt-5.6-")):
-        assert model["tool_mode"] == "code_mode_only"
+        assert model["tool_mode"] in ("code_mode_only", "direct")
         model["tool_mode"] = "direct"
         changed.append(model["slug"])
 compat = root / "ish-compat"
