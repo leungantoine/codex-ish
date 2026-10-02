@@ -12,7 +12,7 @@ import urllib.request
 
 kit = Path(__file__).resolve().parents[1]
 root = Path(sys.argv[1]).resolve()
-assert subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip() == "01fc69f4026735edfdf6789820549727a4867b11"
+assert subprocess.check_output(["git", "rev-parse", "HEAD"], cwd=root, text=True).strip() == "a956835d020762cb2b570053af06f643a11c0ecc"
 subprocess.run(["git", "apply", str(kit / "patches/process-group.patch")], cwd=root, check=True)
 
 lock_path = root / "codex-rs/Cargo.lock"
@@ -74,8 +74,8 @@ compat = root / "ish-compat"
 compat.mkdir()
 (compat / "models-direct.json").write_text(json.dumps(catalog, ensure_ascii=False, indent=2) + "\n")
 (compat / "PATCHINFO.json").write_text(json.dumps({
-    "upstream_commit": "01fc69f4026735edfdf6789820549727a4867b11",
-    "upstream_tag": "rust-v0.159.3",
+    "upstream_commit": "a956835d020762cb2b570053af06f643a11c0ecc",
+    "upstream_tag": "rust-v0.160.0",
     "tokio_registry_sha256": tokio["checksum"],
     "direct_tool_models": changed,
     "patched_source_sha256": {

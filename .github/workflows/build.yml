@@ -23,8 +23,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Fetch pinned OpenAI source
         run: |
-          git clone --depth 1 --branch rust-v0.159.3 https://github.com/openai/codex.git upstream
-          test "$(git -C upstream rev-parse HEAD)" = 01fc69f4026735edfdf6789820549727a4867b11
+          git clone --depth 1 --branch rust-v0.160.0 https://github.com/openai/codex.git upstream
+          test "$(git -C upstream rev-parse HEAD)" = a956835d020762cb2b570053af06f643a11c0ecc
           python3 scripts/prepare-ish-source.py upstream
           cp -a build-tools upstream/
           cp scripts/build-ish-aarch64.sh scripts/codex-gpt6 upstream/scripts/
@@ -63,8 +63,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             upstream/codex-rs/target
-          key: ish-1593-rust195-zig014-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: ish-1593-rust195-zig014-
+          key: ish-1600-rust195-zig014-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ish-1600-rust195-zig014-
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-nextest,uv,dotslash
@@ -122,7 +122,7 @@ jobs:
             fi
           done
           (cd "$pkg" && sha256sum -c SHA256SUMS)
-          qemu-aarch64-static "$pkg/codex" --version | grep -Fx "codex-cli 0.159.3"
+          qemu-aarch64-static "$pkg/codex" --version | grep -Fx "codex-cli 0.160.0"
           qemu-aarch64-static "$pkg/codex-path/rg" --version
           qemu-aarch64-static "$pkg/diagnostics/ish-syscall-probe"
           tar -tzf dist/codex-ish-aarch64.tar.gz > "$RUNNER_TEMP/archive-list.txt"
@@ -142,7 +142,7 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             upstream/codex-rs/target
-          key: ish-1593-rust195-zig014-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ish-1600-rust195-zig014-${{ github.run_id }}-${{ github.run_attempt }}
 
   verify:
     needs: build
@@ -181,7 +181,7 @@ jobs:
       - name: Verify real model tool requests and shell results
         run: |
           set -euo pipefail
-          for model in gpt-6-luna gpt-6-sol gpt-6.1-sol gpt-6-astra; do
+          for model in gpt-6-luna gpt-6-sol gpt-6.1-sol gpt-6-astra gpt-5.6-luna gpt-5.6-sol gpt-5.6-terra; do
             python3 tests/reproduce-direct-model.py "linux-direct-$model" "$PWD/package/compat/models-direct.json" "$model" "$PWD/package/codex"
             sudo systemd-run --wait --pipe --collect --working-directory="$PWD" -p MemoryMax=2G -p MemorySwapMax=0 -p OOMPolicy=kill timeout 240 python3 tests/reproduce-direct-model.py "ish-direct-$model" /codex/compat/models-direct.json "$model" emulator/build/ish -f guest /codex/codex
           done
@@ -190,10 +190,10 @@ jobs:
           set -euo pipefail
           CODEX_ISH_RELEASE_BASE="file://$PWD" sh install.sh
           sh install-direct-tools.sh
-          "$HOME/.local/bin/codex-gpt6" --model gpt-6.1-sol --version | grep -Fx 'codex-cli 0.159.3'
+          "$HOME/.local/bin/codex-gpt6" --model gpt-6.1-sol --version | grep -Fx 'codex-cli 0.160.0'
           python3 tests/reproduce-direct-model.py linux-launcher "$PWD/package/compat/models-direct.json" gpt-6-luna "$HOME/.local/bin/codex-gpt6"
           # Match the host UID used by earlier model tests for the same fakefs.
-          sudo systemd-run --wait --pipe --collect --working-directory="$PWD" -p MemoryMax=2G -p MemorySwapMax=0 -p OOMPolicy=kill timeout 240 python3 tests/reproduce-ish.py ish-1593 emulator/build/ish -f guest /codex/codex --no-daemon --disable code_mode_host -c 'sandbox_mode="danger-full-access"' app-server --stdio
+          sudo systemd-run --wait --pipe --collect --working-directory="$PWD" -p MemoryMax=2G -p MemorySwapMax=0 -p OOMPolicy=kill timeout 240 python3 tests/reproduce-ish.py ish-1600 emulator/build/ish -f guest /codex/codex --no-daemon --disable code_mode_host -c 'sandbox_mode="danger-full-access"' app-server --stdio
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -215,8 +215,8 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           sha256sum -c codex-ish-aarch64.tar.gz.sha256
-          tag="ish-v0.159.3-${GITHUB_RUN_NUMBER}"
+          tag="ish-v0.160.0-${GITHUB_RUN_NUMBER}"
           gh release create "$tag" codex-ish-aarch64.tar.gz codex-ish-aarch64.tar.gz.sha256 \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "Codex 0.159.3 for iSH-AOK (build ${GITHUB_RUN_NUMBER})" \
-            --notes "OpenAI rust-v0.159.3, commit 01fc69f4026735edfdf6789820549727a4867b11. Static ARM64 musl binaries with subprocess patches and bundled GPT-6/GPT-6.1 direct tools. Verified architecture, checksums, QEMU, patched syscall fallback tests, and real shell roundtrips in unmodified iSH-AOK 556 emulator. Authentication and this version on physical iOS devices remain to be tested. See README for unsandboxed execution and iOS suspension limits." --latest
+            --title "Codex 0.160.0 for iSH-AOK (build ${GITHUB_RUN_NUMBER})" \
+            --notes "OpenAI rust-v0.160.0, commit a956835d020762cb2b570053af06f643a11c0ecc. Static ARM64 musl binaries with subprocess patches and bundled GPT-6, GPT-6.1, and GPT-5.6 direct tools. Verified architecture, checksums, QEMU, patched syscall fallback tests, and real shell roundtrips for all seven catalog models in unmodified iSH-AOK 556 emulator. Authentication and this version on physical iOS devices remain to be tested. See README for unsandboxed execution and iOS suspension limits." --latest
