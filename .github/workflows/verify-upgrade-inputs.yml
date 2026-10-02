@@ -55,7 +55,7 @@ jobs:
           toolchain: '1.95.0'
       - uses: taiki-e/install-action@v2
         with:
-          tool: just
+          tool: just,cargo-nextest
       - name: Run focused subprocess tests
         run: |
           (cd upstream && just test -p codex-utils-pty)
