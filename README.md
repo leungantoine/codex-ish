@@ -44,6 +44,18 @@ codex login --device-auth
 
 Complete the device authorization in a browser. Authentication files and tokens are not part of the release archive.
 
+### Device shell check
+
+For an interactive smoke test, start a new session with GPT-5.5 and medium reasoning:
+
+```sh
+codex --model gpt-5.5 --disable code_mode --disable code_mode_only \
+  -c 'model_reasoning_effort="medium"' \
+  --sandbox danger-full-access --ask-for-approval on-request
+```
+
+Ask Codex to execute `printf 'ish-shell-ok\n'` with its shell tool. Confirm the tool ran and returned the expected output and exit status. The recorded device test used Codex 0.158.0; this procedure does not establish physical-device compatibility for Codex 0.160.0.
+
 ### Default configuration
 
 The recommended setup configures `codex` to use Codex's existing direct shell tools. This path does not require an iSH-AOK app update. It uses:
