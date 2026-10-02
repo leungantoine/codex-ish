@@ -3,34 +3,72 @@ name: Build Codex for iSH-AOK
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     paths:
-      - .github/workflows/build.yml
-      - scripts/**
+      - codex-upstream.json
+      - scripts/prepare-ish-source.py
+      - scripts/build-ish-aarch64.sh
       - build-tools/**
       - patches/**
-      - tests/verify-subprocess.sh
       - tests/ish-syscall-probe.c
-      - install.sh
 
 permissions:
   contents: read
 
+concurrency:
+  group: codex-ish-release
+  cancel-in-progress: false
+
 jobs:
+  release-status:
+    runs-on: ubuntu-24.04
+    outputs:
+      should_build: ${{ steps.status.outputs.should_build }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Skip work already covered by the latest release
+        id: status
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ "$GITHUB_EVENT_NAME" == workflow_dispatch ]]; then
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+          upstream_version="$(python3 -c 'import json; print(json.load(open("codex-upstream.json"))["upstream_version"])')"
+          upstream_commit="$(python3 -c 'import json; print(json.load(open("codex-upstream.json"))["upstream_commit"])')"
+          latest_tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || true)"
+          latest_notes="$(gh release view --repo "$GITHUB_REPOSITORY" --json body --jq .body 2>/dev/null || true)"
+          if [[ "$latest_tag" == "ish-v${upstream_version}-"* ]] && grep -Fq "commit ${upstream_commit}" <<< "$latest_notes"; then
+            echo "Latest release already contains upstream ${upstream_version} (${upstream_commit}); skipping full rebuild."
+            echo "should_build=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "should_build=true" >> "$GITHUB_OUTPUT"
+          fi
+
   build:
+    needs: release-status
+    if: github.event_name == 'workflow_dispatch' || needs.release-status.outputs.should_build == 'true'
     runs-on: ubuntu-24.04
     timeout-minutes: 300
     steps:
       - uses: actions/checkout@v4
       - name: Fetch pinned OpenAI source
         run: |
-          git clone --depth 1 --branch rust-v0.160.0 https://github.com/openai/codex.git upstream
-          test "$(git -C upstream rev-parse HEAD)" = a956835d020762cb2b570053af06f643a11c0ecc
+          upstream_tag="$(python3 -c 'import json; print(json.load(open("codex-upstream.json"))["upstream_tag"])')"
+          upstream_commit="$(python3 -c 'import json; print(json.load(open("codex-upstream.json"))["upstream_commit"])')"
+          git clone --depth 1 --branch "$upstream_tag" https://github.com/openai/codex.git upstream
+          test "$(git -C upstream rev-parse HEAD)" = "$upstream_commit"
+          cp codex-upstream.json upstream/
           python3 scripts/prepare-ish-source.py upstream
           cp -a build-tools upstream/
           cp scripts/build-ish-aarch64.sh scripts/codex-gpt6 upstream/scripts/
           mkdir -p upstream/tests
           cp tests/ish-syscall-probe.c upstream/tests/
           cp README.md upstream/README-ish.md
+          mkdir -p upstream/ish-docs/compat
+          cp compat/README.md upstream/ish-docs/compat/README.md
+          cp setup.sh upstream/ish-docs/setup.sh
           chmod +x upstream/build-tools/* upstream/scripts/build-ish-aarch64.sh
       - uses: dtolnay/rust-toolchain@stable
         with:
@@ -63,8 +101,8 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             upstream/codex-rs/target
-          key: ish-1600-rust195-zig014-${{ github.run_id }}-${{ github.run_attempt }}
-          restore-keys: ish-1600-rust195-zig014-
+          key: ish-${{ hashFiles('codex-upstream.json') }}-rust195-zig014-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: ish-${{ hashFiles('codex-upstream.json') }}-rust195-zig014-
       - uses: taiki-e/install-action@v2
         with:
           tool: just,cargo-nextest,uv,dotslash
@@ -122,7 +160,8 @@ jobs:
             fi
           done
           (cd "$pkg" && sha256sum -c SHA256SUMS)
-          qemu-aarch64-static "$pkg/codex" --version | grep -Fx "codex-cli 0.160.0"
+          expected_version="$(python3 -c 'import json; print(json.load(open("codex-upstream.json"))["upstream_version"])')"
+          qemu-aarch64-static "$pkg/codex" --version | grep -Fx "codex-cli $expected_version"
           qemu-aarch64-static "$pkg/codex-path/rg" --version
           qemu-aarch64-static "$pkg/diagnostics/ish-syscall-probe"
           tar -tzf dist/codex-ish-aarch64.tar.gz > "$RUNNER_TEMP/archive-list.txt"
@@ -142,10 +181,11 @@ jobs:
             ~/.cargo/registry
             ~/.cargo/git
             upstream/codex-rs/target
-          key: ish-1600-rust195-zig014-${{ github.run_id }}-${{ github.run_attempt }}
+          key: ish-${{ hashFiles('codex-upstream.json') }}-rust195-zig014-${{ github.run_id }}-${{ github.run_attempt }}
 
   verify:
-    needs: build
+    needs: [release-status, build]
+    if: github.event_name == 'workflow_dispatch' || needs.release-status.outputs.should_build == 'true'
     runs-on: ubuntu-24.04-arm
     timeout-minutes: 40
     steps:
@@ -159,6 +199,7 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y meson ninja-build clang llvm libarchive-dev libsqlite3-dev zlib1g-dev musl-tools
           git clone --depth 1 --branch builds/iSH-AOK_556 https://github.com/emkey1/ish-AOK.git emulator
+          test "$(git -C emulator rev-parse HEAD)" = 19b129bed782897a94d56e1855497f831cfdd405
           git -C emulator submodule update --init --depth 1 deps/smallclue
           CC=clang meson setup emulator/build emulator --buildtype=debugoptimized -Dguest_archs=arm64 -Dnative_rust=disabled -Dnative_zsh=disabled -Dnative_dash=disabled -Dnative_bash=disabled -Dlog=strace
           ninja -C emulator/build -j 2 ish tools/fakefsify
@@ -181,7 +222,9 @@ jobs:
       - name: Verify real model tool requests and shell results
         run: |
           set -euo pipefail
-          for model in gpt-6-luna gpt-6-sol gpt-6.1-sol gpt-6-astra gpt-5.6-luna gpt-5.6-sol gpt-5.6-terra; do
+          mapfile -t direct_models < <(python3 -c 'import json; d=json.load(open("package/compat/models-direct.json")); print("\n".join(m["slug"] for m in d["models"] if m["tool_mode"] == "direct" and m["slug"].startswith(("gpt-6-", "gpt-6.", "gpt-5.6-"))))')
+          test "${#direct_models[@]}" -gt 0
+          for model in "${direct_models[@]}"; do
             python3 tests/reproduce-direct-model.py "linux-direct-$model" "$PWD/package/compat/models-direct.json" "$model" "$PWD/package/codex"
             sudo systemd-run --wait --pipe --collect --working-directory="$PWD" -p MemoryMax=2G -p MemorySwapMax=0 -p OOMPolicy=kill timeout 240 python3 tests/reproduce-direct-model.py "ish-direct-$model" /codex/compat/models-direct.json "$model" emulator/build/ish -f guest /codex/codex
           done
@@ -190,8 +233,10 @@ jobs:
           set -euo pipefail
           CODEX_ISH_RELEASE_BASE="file://$PWD" sh install.sh
           sh install-direct-tools.sh
-          "$HOME/.local/bin/codex-gpt6" --model gpt-6.1-sol --version | grep -Fx 'codex-cli 0.160.0'
-          python3 tests/reproduce-direct-model.py linux-launcher "$PWD/package/compat/models-direct.json" gpt-6-luna "$HOME/.local/bin/codex-gpt6"
+          expected_version="$(python3 -c 'import json; print(json.load(open("codex-upstream.json"))["upstream_version"])')"
+          test_model="$(python3 -c 'import json; d=json.load(open("package/compat/models-direct.json")); print(next(m["slug"] for m in d["models"] if m["tool_mode"] == "direct" and m["slug"].startswith(("gpt-6-", "gpt-6.", "gpt-5.6-"))))')"
+          "$HOME/.local/bin/codex-gpt6" --model "$test_model" --version | grep -Fx "codex-cli $expected_version"
+          python3 tests/reproduce-direct-model.py linux-launcher "$PWD/package/compat/models-direct.json" "$test_model" "$HOME/.local/bin/codex-gpt6"
           # Match the host UID used by earlier model tests for the same fakefs.
           sudo systemd-run --wait --pipe --collect --working-directory="$PWD" -p MemoryMax=2G -p MemorySwapMax=0 -p OOMPolicy=kill timeout 240 python3 tests/reproduce-ish.py ish-1600 emulator/build/ish -f guest /codex/codex --no-daemon --disable code_mode_host -c 'sandbox_mode="danger-full-access"' app-server --stdio
       - uses: actions/upload-artifact@v4
@@ -201,12 +246,13 @@ jobs:
           path: '*-stderr.log'
 
   publish:
-    needs: [build, verify]
-    if: github.ref == 'refs/heads/main'
+    needs: [release-status, build, verify]
+    if: github.ref == 'refs/heads/main' && needs.release-status.outputs.should_build == 'true'
     runs-on: ubuntu-24.04
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
       - uses: actions/download-artifact@v4
         with:
           name: codex-ish-aarch64
@@ -215,8 +261,11 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           sha256sum -c codex-ish-aarch64.tar.gz.sha256
-          tag="ish-v0.160.0-${GITHUB_RUN_NUMBER}"
+          upstream_version="$(python3 -c 'import json; print(json.load(open("codex-upstream.json"))["upstream_version"])')"
+          upstream_tag="$(python3 -c 'import json; print(json.load(open("codex-upstream.json"))["upstream_tag"])')"
+          upstream_commit="$(python3 -c 'import json; print(json.load(open("codex-upstream.json"))["upstream_commit"])')"
+          tag="ish-v${upstream_version}-${GITHUB_RUN_NUMBER}"
           gh release create "$tag" codex-ish-aarch64.tar.gz codex-ish-aarch64.tar.gz.sha256 \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title "Codex 0.160.0 for iSH-AOK (build ${GITHUB_RUN_NUMBER})" \
-            --notes "OpenAI rust-v0.160.0, commit a956835d020762cb2b570053af06f643a11c0ecc. Static ARM64 musl binaries with subprocess patches and bundled GPT-6, GPT-6.1, and GPT-5.6 direct tools. Verified architecture, checksums, QEMU, patched syscall fallback tests, and real shell roundtrips for all seven catalog models in unmodified iSH-AOK 556 emulator. Authentication and this version on physical iOS devices remain to be tested. See README for unsandboxed execution and iOS suspension limits." --latest
+            --title "Codex ${upstream_version} for iSH-AOK (build ${GITHUB_RUN_NUMBER})" \
+            --notes "OpenAI ${upstream_tag}, commit ${upstream_commit}. Static ARM64 musl binaries with subprocess patches and bundled GPT-6, GPT-6.1, and GPT-5.6 direct tools. Verified architecture, checksums, QEMU, patched syscall fallback tests, and real shell roundtrips for all selected direct-tool catalog models in unmodified iSH-AOK 556 emulator. Authentication and this version on physical iOS devices remain to be tested. See README for unsandboxed execution and iOS suspension limits." --latest

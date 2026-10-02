@@ -1,9 +1,15 @@
 name: Verify upgraded source dependency metadata
 on:
   workflow_dispatch:
-  push:
+  pull_request:
     paths:
       - .github/workflows/verify-upgrade-inputs.yml
+      - .github/workflows/build.yml
+      - codex-upstream.json
+      - scripts/**
+      - build-tools/**
+      - patches/**
+      - tests/verify-subprocess.sh
 permissions:
   contents: read
 jobs:
@@ -12,16 +18,48 @@ jobs:
     timeout-minutes: 35
     steps:
       - uses: actions/checkout@v4
+      - name: Validate pin and maintenance script syntax
+        run: |
+          python3 -m json.tool codex-upstream.json >/dev/null
+          python3 -m py_compile scripts/prepare-ish-source.py scripts/record-patchinfo.py
+          for script in scripts/build-ish-aarch64.sh build-tools/zigcc build-tools/zigcxx; do bash -n "$script"; done
+          for script in scripts/codex-gpt6 install.sh setup.sh install-direct-tools.sh; do sh -n "$script"; done
+          python3 - <<'PY'
+          import json
+          import re
+          from pathlib import Path
+          pin = json.loads(Path("codex-upstream.json").read_text())
+          assert pin["upstream_tag"] == f'rust-v{pin["upstream_version"]}'
+          assert re.fullmatch(r"[0-9a-f]{40}", pin["upstream_commit"])
+          for name in ("tokio_version", "libc_version"):
+              assert all(part.isdigit() for part in pin[name].split(".")) and pin[name].count(".") == 2, name
+          PY
       - name: Prepare exact upgraded source
         run: |
-          git clone --depth 1 --branch rust-v0.159.3 https://github.com/openai/codex.git upstream
+          upstream_tag="$(python3 -c 'import json; print(json.load(open("codex-upstream.json"))["upstream_tag"])')"
+          git clone --depth 1 --branch "$upstream_tag" https://github.com/openai/codex.git upstream
           python3 scripts/prepare-ish-source.py upstream
+          python3 - <<'PY'
+          import json
+          from pathlib import Path
+          catalog = json.loads(Path("upstream/ish-compat/models-direct.json").read_text())
+          models = catalog["models"]
+          direct = [m["slug"] for m in models if m["tool_mode"] == "direct"]
+          expected = [m["slug"] for m in models if m["slug"].startswith(("gpt-6-", "gpt-6.", "gpt-5.6-"))]
+          assert expected and all(slug in direct for slug in expected), (expected, direct)
+          assert "gpt-6-luna" in direct, "default launcher model is missing from direct catalog"
+          print(f"Prepared {len(expected)} direct-tool models: {expected}")
+          PY
       - uses: dtolnay/rust-toolchain@stable
         with:
           toolchain: '1.95.0'
       - uses: taiki-e/install-action@v2
         with:
-          tool: just
+          tool: just,cargo-nextest
+      - name: Run focused subprocess tests
+        run: |
+          (cd upstream && just test -p codex-utils-pty)
+          ISH_PATCHED_SOURCE="$PWD/upstream" bash tests/verify-subprocess.sh
       - uses: bazel-contrib/setup-bazel@c5acdfb288317d0b5c0bbd7a396a3dc868bb0f86
         with:
           bazelisk-version: 1.28.1

@@ -2,8 +2,19 @@ name: Verify one-command setup and startup launcher
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     paths:
       - setup.sh
+      - install.sh
+      - install-direct-tools.sh
+      - tests/reproduce-direct-model.py
+      - .github/workflows/verify-setup.yml
+  pull_request:
+    paths:
+      - setup.sh
+      - install.sh
+      - install-direct-tools.sh
+      - tests/reproduce-direct-model.py
       - .github/workflows/verify-setup.yml
 permissions:
   contents: read

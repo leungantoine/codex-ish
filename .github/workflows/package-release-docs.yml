@@ -1,69 +1,100 @@
-name: Publish verified release with current installation guide
+name: Refresh docs in latest verified release
+
 on:
   workflow_dispatch:
   push:
+    branches: [main]
     paths:
-      - .github/workflows/package-release-docs.yml
+      - README.md
+      - compat/README.md
+      - setup.sh
+
 permissions:
   contents: read
+
+concurrency:
+  group: codex-ish-release
+  cancel-in-progress: false
+
 jobs:
-  package:
-    if: github.ref == 'refs/heads/main'
-    runs-on: ubuntu-24.04-arm
-    timeout-minutes: 20
-    permissions:
-      contents: write
-      actions: read
+  source:
+    runs-on: ubuntu-24.04
+    outputs:
+      ready: ${{ steps.gate.outputs.ready }}
+      source_tag: ${{ steps.gate.outputs.source_tag }}
+      upstream_version: ${{ steps.gate.outputs.upstream_version }}
+      upstream_commit: ${{ steps.gate.outputs.upstream_commit }}
     steps:
       - uses: actions/checkout@v4
-      - name: Download only the successfully verified 0.159.3 build
+      - name: Confirm latest release matches the pinned source
+        id: gate
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          test "$(gh api repos/$GITHUB_REPOSITORY/actions/jobs/110492513041 --jq .conclusion)" = success
-          test "$(gh api repos/$GITHUB_REPOSITORY/actions/runs/36913443330 --jq .conclusion)" = success
-          tag=$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName)
-          case "$tag" in ish-v0.159.3-*) ;; *) echo 'Expected verified 0.159.3 release' >&2; exit 1 ;; esac
-          echo "SOURCE_TAG=$tag" >> "$GITHUB_ENV"
-          gh release download "$tag" --repo "$GITHUB_REPOSITORY" --pattern 'codex-ish-aarch64.tar.gz*'
+          upstream_version="$(python3 -c 'import json; print(json.load(open("codex-upstream.json"))["upstream_version"])')"
+          upstream_commit="$(python3 -c 'import json; print(json.load(open("codex-upstream.json"))["upstream_commit"])')"
+          source_tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || true)"
+          release_notes="$(gh release view --repo "$GITHUB_REPOSITORY" --json body --jq .body 2>/dev/null || true)"
+          echo "upstream_version=$upstream_version" >> "$GITHUB_OUTPUT"
+          echo "upstream_commit=$upstream_commit" >> "$GITHUB_OUTPUT"
+          echo "source_tag=$source_tag" >> "$GITHUB_OUTPUT"
+          if [[ "$source_tag" == "ish-v${upstream_version}-"* ]] && grep -Fq "commit ${upstream_commit}" <<< "$release_notes"; then
+            echo "ready=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "ready=false" >> "$GITHUB_OUTPUT"
+            echo "Latest release does not match the pin. The next verified source build will include these docs."
+          fi
+
+  package:
+    needs: source
+    if: github.ref == 'refs/heads/main' && needs.source.outputs.ready == 'true'
+    runs-on: ubuntu-24.04-arm
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download and verify current package
+        env:
+          GH_TOKEN: ${{ github.token }}
+          SOURCE_TAG: ${{ needs.source.outputs.source_tag }}
+          UPSTREAM_VERSION: ${{ needs.source.outputs.upstream_version }}
+          UPSTREAM_COMMIT: ${{ needs.source.outputs.upstream_commit }}
+        run: |
+          set -euo pipefail
+          gh release download "$SOURCE_TAG" --repo "$GITHUB_REPOSITORY" --pattern 'codex-ish-aarch64.tar.gz*'
           sha256sum -c codex-ish-aarch64.tar.gz.sha256
           mkdir package
           tar -xzf codex-ish-aarch64.tar.gz -C package
           (cd package && sha256sum -c SHA256SUMS)
-          package/codex --version | grep -Fx 'codex-cli 0.159.3'
-          grep -F '01fc69f4026735edfdf6789820549727a4867b11' package/BUILDINFO.txt
-          (cd package && sha256sum codex codex-code-mode-host codex-responses-api-proxy codex-path/rg diagnostics/ish-syscall-probe > "$RUNNER_TEMP/verified-executables.sha256")
-      - name: Include current installation guide without changing executables
+          package/codex --version | grep -Fx "codex-cli $UPSTREAM_VERSION"
+          grep -F "Upstream commit: $UPSTREAM_COMMIT" package/BUILDINFO.txt
+          (cd package && sha256sum codex codex-code-mode-host codex-responses-api-proxy codex-path/rg diagnostics/ish-syscall-probe > "$RUNNER_TEMP/executables.before")
+
+      - name: Update docs and prove executable hashes are unchanged
         run: |
+          set -euo pipefail
+          mkdir -p package/compat
           cp README.md package/README.md
           cp compat/README.md package/compat/README.md
           cp setup.sh package/setup.sh
-          cp package/BUILDINFO.txt package/BUILDINFO
-          (cd package && sha256sum -c "$RUNNER_TEMP/verified-executables.sha256")
+          (cd package && sha256sum -c "$RUNNER_TEMP/executables.before")
           (cd package && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
-          tar -czf codex-ish-aarch64.tar.gz -C package .
-          sha256sum codex-ish-aarch64.tar.gz > codex-ish-aarch64.tar.gz.sha256
-          for name in codex codex-code-mode-host codex-responses-api-proxy codex-path/rg diagnostics/ish-syscall-probe; do
-            readelf -h "package/$name" | grep -q 'Machine:.*AArch64'
-            if readelf -l "package/$name" | grep -q INTERP; then exit 1; fi
-            if readelf -d "package/$name" | grep -q '(NEEDED)'; then exit 1; fi
-          done
-      - name: Verify complete startup setup against this archive
-        run: |
-          CODEX_ISH_SETUP_BASE="file://$PWD" CODEX_ISH_RELEASE_BASE="file://$PWD" sh setup.sh
-          env -i HOME="$HOME" PATH=/usr/bin:/bin /bin/bash --login -c 'command -v codex; codex --version'
-          python3 tests/reproduce-direct-model.py setup-release "$PWD/package/compat/models-direct.json" gpt-6-luna "$HOME/.local/bin/codex"
-      - name: Publish installation-ready archive
+          (cd package && sha256sum -c SHA256SUMS)
+          mkdir -p dist
+          tar -C package -czf dist/codex-ish-aarch64.tar.gz .
+          (cd dist && sha256sum codex-ish-aarch64.tar.gz > codex-ish-aarch64.tar.gz.sha256)
+          (cd dist && sha256sum -c codex-ish-aarch64.tar.gz.sha256)
+
+      - name: Publish docs-only release with unchanged executables
         env:
           GH_TOKEN: ${{ github.token }}
+          SOURCE_TAG: ${{ needs.source.outputs.source_tag }}
+          UPSTREAM_VERSION: ${{ needs.source.outputs.upstream_version }}
+          UPSTREAM_COMMIT: ${{ needs.source.outputs.upstream_commit }}
         run: |
-          gh release create "$SOURCE_TAG.1" codex-ish-aarch64.tar.gz codex-ish-aarch64.tar.gz.sha256 \
-            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" \
-            --title 'Codex 0.159.3 for iSH-AOK, with one-command setup' \
-            --notes 'Preserves all five executable hashes from the verified 0.159.3 build. Includes current installation and troubleshooting guides, matching GPT-6/GPT-6.1 direct tools, source-input hashes, and the one-command setup script. Native startup setup and a real shell roundtrip passed. The source build passed QEMU, syscall fallback tests, and shell/model roundtrips in unmodified iSH-AOK 556. Physical-device authentication and 0.159.3 task execution remain to be tested. The reported iOS suspension lock termination is not claimed fixed; keep iSH visible during tasks. See README for guest file/network access and approval settings.' --latest
-      - uses: actions/upload-artifact@v4
-        with:
-          name: final-codex-ish-aarch64
-          path: |
-            codex-ish-aarch64.tar.gz
-            codex-ish-aarch64.tar.gz.sha256
+          set -euo pipefail
+          tag="${SOURCE_TAG}.docs-${GITHUB_RUN_NUMBER}"
+          gh release create "$tag" dist/codex-ish-aarch64.tar.gz dist/codex-ish-aarch64.tar.gz.sha256 \
+            --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest \
+            --title "Codex ${UPSTREAM_VERSION} for iSH-AOK (docs update ${GITHUB_RUN_NUMBER})" \
+            --notes "Documentation refresh for OpenAI Codex commit ${UPSTREAM_COMMIT}. The five verified executable hashes are unchanged from ${SOURCE_TAG}; only README and setup documentation were refreshed."

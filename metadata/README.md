@@ -1,4 +1,6 @@
-# Codex 0.159.3 dependency metadata
+# Historical Codex 0.159.3 dependency metadata
+
+This checked-in patch is historical and does not describe the current 0.160.0 pin. Run the current-pin metadata workflow to regenerate a patch when updating Codex.
 
 `bazel-dependency-lock.patch` is the actual `MODULE.bazel.lock` update produced by
 `just bazel-lock-update` against OpenAI commit

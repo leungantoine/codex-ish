@@ -12,7 +12,9 @@ export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_MUSL_RUSTFLAGS="${CARGO_TARGET_AARCH64
 export CMAKE_C_COMPILER="$CC" CMAKE_CXX_COMPILER="$CXX"
 export CFLAGS='-pthread -Wno-error=frame-larger-than' CXXFLAGS='-pthread -Wno-error=frame-larger-than'
 export AWS_LC_SYS_NO_JITTER_ENTROPY=1 AWS_LC_SYS_NO_JITTER_ENTROPY_aarch64_unknown_linux_musl=1
-export PKG_CONFIG_ALLOW_CROSS=1 STABLE_GIT_COMMIT="a956835d020762cb2b570053af06f643a11c0ecc"
+pin_tag="$(python3 -c 'import json; print(json.load(open("codex-upstream.json"))["upstream_tag"])')"
+pin_tokio="$(python3 -c 'import json; print(json.load(open("codex-upstream.json"))["tokio_version"])')"
+export PKG_CONFIG_ALLOW_CROSS=1 STABLE_GIT_COMMIT="$(python3 -c 'import json; print(json.load(open("codex-upstream.json"))["upstream_commit"])')"
 export RUNNER_TEMP="${RUNNER_TEMP:-/tmp}"
 export GITHUB_ENV="$(mktemp)"
 trap 'rm -f "$GITHUB_ENV"' EXIT
@@ -63,11 +65,11 @@ done
 "$CC" -O2 -static tests/ish-syscall-probe.c -o "$package/diagnostics/ish-syscall-probe"
 cp tests/ish-syscall-probe.c "$package/diagnostics/ish-syscall-probe.c"
 cat > "$package/BUILDINFO.txt" <<INFO
-OpenAI Codex rust-v0.160.0
+OpenAI Codex $pin_tag
 Upstream commit: $STABLE_GIT_COMMIT
 Target: $TARGET
 Rust: $(rustc --version)
-Patched source: codex-rs/utils/pty/src/process_group.rs, codex-rs/vendor/tokio-1.52.3/src/process/unix/pidfd_reaper.rs
+Patched source: codex-rs/utils/pty/src/process_group.rs, codex-rs/vendor/tokio-$pin_tokio/src/process/unix/pidfd_reaper.rs
 Bundled ripgrep: 15.2.0 aarch64-unknown-linux-musl (official release SHA-256 pinned in build script)
 The Linux bubblewrap sandbox is unavailable in iSH-AOK and is not bundled.
 GPT-6 direct-tool catalog and codex-gpt6 launcher are included; daemon and V8 hosting stay disabled.
@@ -76,6 +78,8 @@ cp "$package/BUILDINFO.txt" "$package/BUILDINFO"
 cp ish-compat/models-direct.json ish-compat/PATCHINFO.json "$package/compat/"
 install -m 0755 scripts/codex-gpt6 "$package/codex-gpt6"
 cp README-ish.md "$package/README.md"
+cp ish-docs/compat/README.md "$package/compat/README.md"
+cp ish-docs/setup.sh "$package/setup.sh"
 cp LICENSE NOTICE "$package/"
 (cd "$package" && find . -type f ! -name SHA256SUMS -print0 | sort -z | xargs -0 sha256sum > SHA256SUMS)
 tar -C "$package" -czf "$repo_root/dist/codex-ish-aarch64.tar.gz" .
