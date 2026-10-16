@@ -6,7 +6,7 @@ This repository packages OpenAI Codex for the ARM64 Alpine environment provided 
 
 The current source pin is Codex 0.160.0, upstream tag [`rust-v0.160.0`](https://github.com/openai/codex/tree/rust-v0.160.0), commit `a956835d020762cb2b570053af06f643a11c0ecc`. The binary build was published as [`ish-v0.160.0-8`](https://github.com/leungantoine/codex-ish/releases/tag/ish-v0.160.0-8) and passed the [ARM64 build and iSH-AOK emulator workflow](https://github.com/leungantoine/codex-ish/actions/runs/36947797945).
 
-Download the [latest release](https://github.com/leungantoine/codex-ish/releases/latest). Documentation refresh releases may use a `.docs-N` suffix; they retain the verified executables and update the bundled documentation. The [latest docs refresh](https://github.com/leungantoine/codex-ish/actions/runs/36970616038) verified that all five executable hashes were unchanged.
+Download the [latest release](https://github.com/leungantoine/codex-ish/releases/latest). Documentation refresh releases reuse the verified executables and update the bundled guides. The [latest docs refresh](https://github.com/leungantoine/codex-ish/actions/runs/37077982643) verified that all five executable hashes were unchanged.
 
 The package targets `aarch64-unknown-linux-musl` and contains the Codex CLI, its companion executables, a direct-tool model catalog, a launcher, ripgrep, diagnostics, licenses, build information, and checksums.
 
