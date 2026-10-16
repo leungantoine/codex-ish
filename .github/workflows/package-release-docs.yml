@@ -22,6 +22,7 @@ jobs:
     outputs:
       ready: ${{ steps.gate.outputs.ready }}
       source_tag: ${{ steps.gate.outputs.source_tag }}
+      base_tag: ${{ steps.gate.outputs.base_tag }}
       upstream_version: ${{ steps.gate.outputs.upstream_version }}
       upstream_commit: ${{ steps.gate.outputs.upstream_commit }}
     steps:
@@ -35,9 +36,11 @@ jobs:
           upstream_commit="$(python3 -c 'import json; print(json.load(open("codex-upstream.json"))["upstream_commit"])')"
           source_tag="$(gh release view --repo "$GITHUB_REPOSITORY" --json tagName --jq .tagName 2>/dev/null || true)"
           release_notes="$(gh release view --repo "$GITHUB_REPOSITORY" --json body --jq .body 2>/dev/null || true)"
+          base_tag="${source_tag%%.docs-*}"
           echo "upstream_version=$upstream_version" >> "$GITHUB_OUTPUT"
           echo "upstream_commit=$upstream_commit" >> "$GITHUB_OUTPUT"
           echo "source_tag=$source_tag" >> "$GITHUB_OUTPUT"
+          echo "base_tag=$base_tag" >> "$GITHUB_OUTPUT"
           if [[ "$source_tag" == "ish-v${upstream_version}-"* ]] && grep -Fq "commit ${upstream_commit}" <<< "$release_notes"; then
             echo "ready=true" >> "$GITHUB_OUTPUT"
           else
@@ -57,6 +60,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_TAG: ${{ needs.source.outputs.source_tag }}
+          BASE_TAG: ${{ needs.source.outputs.base_tag }}
           UPSTREAM_VERSION: ${{ needs.source.outputs.upstream_version }}
           UPSTREAM_COMMIT: ${{ needs.source.outputs.upstream_commit }}
         run: |
@@ -89,12 +93,13 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
           SOURCE_TAG: ${{ needs.source.outputs.source_tag }}
+          BASE_TAG: ${{ needs.source.outputs.base_tag }}
           UPSTREAM_VERSION: ${{ needs.source.outputs.upstream_version }}
           UPSTREAM_COMMIT: ${{ needs.source.outputs.upstream_commit }}
         run: |
           set -euo pipefail
-          tag="${SOURCE_TAG}.docs-${GITHUB_RUN_NUMBER}"
+          tag="${BASE_TAG}.docs-${GITHUB_RUN_NUMBER}"
           gh release create "$tag" dist/codex-ish-aarch64.tar.gz dist/codex-ish-aarch64.tar.gz.sha256 \
             --repo "$GITHUB_REPOSITORY" --target "$GITHUB_SHA" --latest \
             --title "Codex ${UPSTREAM_VERSION} for iSH-AOK (docs update ${GITHUB_RUN_NUMBER})" \
-            --notes "Documentation refresh for OpenAI Codex commit ${UPSTREAM_COMMIT}. The five verified executable hashes are unchanged from ${SOURCE_TAG}; only README and setup documentation were refreshed."
+            --notes "Documentation refresh for OpenAI Codex commit ${UPSTREAM_COMMIT}. The five verified executable hashes are unchanged from ${BASE_TAG}; only README and setup documentation were refreshed."
