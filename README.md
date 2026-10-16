@@ -4,9 +4,9 @@ This repository packages OpenAI Codex for the ARM64 Alpine environment provided 
 
 ## Current release
 
-The current source pin is Codex 0.160.0, upstream tag [`rust-v0.160.0`](https://github.com/openai/codex/tree/rust-v0.160.0), commit `a956835d020762cb2b570053af06f643a11c0ecc`. The binary build was published as [`ish-v0.160.0-8`](https://github.com/leungantoine/codex-ish/releases/tag/ish-v0.160.0-8) and passed the [ARM64 build and iSH-AOK emulator workflow](https://github.com/leungantoine/codex-ish/actions/runs/36947797945).
+This revision targets Codex 0.163.0, upstream tag [`rust-v0.163.0`](https://github.com/openai/codex/tree/rust-v0.163.0), commit `83086188ae0614bd882818ff1aa23f3194962012`. The exact source and dependency versions are recorded in [`codex-upstream.json`](codex-upstream.json). A new source build is published only after the [ARM64 package and iSH-AOK emulator checks](.github/workflows/build.yml) pass.
 
-Download the [latest release](https://github.com/leungantoine/codex-ish/releases/latest). Documentation refresh releases reuse the verified executables and update the bundled guides. The [docs refresh workflow](.github/workflows/package-release-docs.yml) verifies all five executable hashes before publishing a refresh.
+Download the [latest verified release](https://github.com/leungantoine/codex-ish/releases/latest). While an upgrade is building, that release can be older than the source revision. The installed package's `BUILDINFO.txt` records its upstream version and commit. Documentation refresh releases reuse the verified executables and update the bundled guides. The [docs refresh workflow](.github/workflows/package-release-docs.yml) verifies all five executable hashes before publishing a refresh.
 
 The package targets `aarch64-unknown-linux-musl` and contains the Codex CLI, its companion executables, a direct-tool model catalog, a launcher, ripgrep, diagnostics, licenses, build information, and checksums.
 
@@ -18,7 +18,7 @@ Use iSH-AOK's **ARM64 Alpine** root. Confirm the architecture first:
 uname -m
 ```
 
-The output must be `aarch64`. The release archive is approximately 205 MiB; allow about 1 GiB of free guest storage for a fresh install and 2 GiB for an upgrade that retains the previous package during staging. Then run the setup command:
+The output must be `aarch64`. Check the release page for the compressed archive size and allow space for both the download and extracted package. During an upgrade, the installer retains the existing package while verifying its replacement. Then run the setup command:
 
 ```sh
 apk add --no-cache ca-certificates curl tar coreutils git bash && \
@@ -54,7 +54,7 @@ codex --model gpt-5.5 --disable code_mode --disable code_mode_only \
   --sandbox danger-full-access --ask-for-approval on-request
 ```
 
-Ask Codex to execute `printf 'ish-shell-ok\n'` with its shell tool. Confirm the tool ran and returned the expected output and exit status. The recorded device test used Codex 0.158.0; this procedure does not establish physical-device compatibility for Codex 0.160.0.
+Ask Codex to execute `printf 'ish-shell-ok\n'` with its shell tool. Confirm the tool ran and returned the expected output and exit status. The recorded device test used Codex 0.158.0; this procedure does not establish physical-device compatibility for newer releases.
 
 ### Default configuration
 
@@ -75,13 +75,13 @@ codex --model gpt-6.1-sol
 codex --model gpt-5.6-sol
 ```
 
-The current catalog includes GPT-6-Luna, GPT-6-Sol, GPT-6-Astra, GPT-6.1-Sol, GPT-5.6-Luna, GPT-5.6-Terra, and GPT-5.6-Sol. For these entries, the compatibility catalog selects direct tools while retaining the model identifiers and other catalog metadata. The [compatibility guide](compat/README.md) describes the catalog, historical fallback instructions, and model-specific verification limits.
+The current catalog includes GPT-6-Luna, GPT-6-Sol, GPT-6-Astra, GPT-6.1-Sol, GPT-5.6-Luna, GPT-5.6-Terra, and GPT-5.6-Sol. For these entries, the compatibility catalog selects direct tools while retaining the model identifiers and other catalog metadata. The new upstream Daybreak entries retain their code-mode-only settings and are outside this direct-tool configuration. The [compatibility guide](compat/README.md) describes the catalog, historical fallback instructions, and model-specific verification limits.
 
 ## Verification status and limitations
 
-The current 0.160.0 package passed checksum, architecture, static-linking, QEMU, subprocess, and iSH-AOK build 556 emulator checks. The emulator tests exercise the real release binaries with a local mock service; they verify Codex's tool-execution path, not authenticated inference or the service's acceptance of every request. See the [build workflow](.github/workflows/build.yml) and [compatibility guide](compat/README.md) for test details.
+Every source release must pass checksum, architecture, static-linking, QEMU, subprocess, and iSH-AOK build 556 emulator checks before publication. The emulator tests exercise the real release binaries with a local mock service; they verify Codex's tool-execution path, not authenticated inference or the service's acceptance of every request. See the [build workflow](.github/workflows/build.yml) and [compatibility guide](compat/README.md) for test details.
 
-Physical-device testing is more limited. A shell smoke test was recorded on an earlier 0.158.0 package using GPT-5.5. An earlier device report also describes the direct-tool setup working on iSH-AOK. Authentication and broader workloads on the current 0.160.0 package have not been recorded.
+Physical-device testing is more limited. A shell smoke test was recorded on an earlier 0.158.0 package using GPT-5.5. An earlier device report also describes the direct-tool setup working on iSH-AOK. Authentication and broader workloads on the 0.163.0 source revision have not been recorded on a physical device.
 
 ### Known limitations
 

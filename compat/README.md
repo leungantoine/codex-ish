@@ -10,11 +10,11 @@ replacement evaluator.
 
 Use the one-command [setup in the main README](../README.md#installation), then run `codex`. Setup saves PATH for future iSH sessions and configures plain `codex` with GPT-6-Luna, medium reasoning, direct tools, the daemon disabled, and unsandboxed guest access with approval on request. Guest files and network are accessible. Keep iSH visible during tasks because the reported iOS suspension lock failure is not claimed fixed.
 
-Codex 0.160.0 is the current package, pinned to OpenAI commit `a956835d020762cb2b570053af06f643a11c0ecc`. It bundles the matching direct-tool catalog for the GPT-6, GPT-6.1, and GPT-5.6 models. Source pin, original Tokio checksum, and input hashes are in the archive's `compat/PATCHINFO.json`. Use `codex --model gpt-6.1-sol` to select GPT-6.1-Sol. The helper installation recognizes the bundled catalog and does not download the old fallback catalog.
+This revision targets Codex 0.163.0, pinned to OpenAI commit `83086188ae0614bd882818ff1aa23f3194962012`. Each published package bundles the matching direct-tool catalog for the GPT-6, GPT-6.1, and GPT-5.6 models. Source pin, original Tokio checksum, and input hashes are in the archive's `compat/PATCHINFO.json`. Use `codex --model gpt-6.1-sol` to select GPT-6.1-Sol. The helper installation recognizes the bundled catalog and does not download the old fallback catalog.
 
 The user confirmed that the earlier GPT-6 direct-tool setup works on their device. That report does not establish every model or task, and physical-device testing of this release is still required.
 
-The historical fallback instructions and recorded checks below describe the older 0.158.0 binary. The current 0.160.0 package bundles its own catalog and launcher.
+The historical fallback instructions and recorded checks below describe the older 0.158.0 binary. Current packages bundle their own catalog and launcher.
 
 ## Historical 0.158.0 fallback installation
 
