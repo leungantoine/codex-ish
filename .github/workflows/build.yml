@@ -238,7 +238,7 @@ jobs:
           "$HOME/.local/bin/codex-gpt6" --model "$test_model" --version | grep -Fx "codex-cli $expected_version"
           python3 tests/reproduce-direct-model.py linux-launcher "$PWD/package/compat/models-direct.json" "$test_model" "$HOME/.local/bin/codex-gpt6"
           # Match the host UID used by earlier model tests for the same fakefs.
-          sudo systemd-run --wait --pipe --collect --working-directory="$PWD" -p MemoryMax=2G -p MemorySwapMax=0 -p OOMPolicy=kill timeout 240 python3 tests/reproduce-ish.py ish-1600 emulator/build/ish -f guest /codex/codex --no-daemon --disable code_mode_host -c 'sandbox_mode="danger-full-access"' app-server --stdio
+          sudo systemd-run --wait --pipe --collect --working-directory="$PWD" -p MemoryMax=2G -p MemorySwapMax=0 -p OOMPolicy=kill timeout 240 python3 tests/reproduce-ish.py ish-subprocess emulator/build/ish -f guest /codex/codex --no-daemon --disable code_mode_host -c 'sandbox_mode="danger-full-access"' app-server --stdio
       - uses: actions/upload-artifact@v4
         if: always()
         with:
